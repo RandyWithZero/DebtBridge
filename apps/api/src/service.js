@@ -34,9 +34,13 @@ export function createDebtBridgeService(repository) {
       return document;
     },
 
-    createDebtorApplication(input, metadata) {
+    createDebtorApplication(input, metadata, actor = null) {
       validateDebtorApplication(input);
-      const application = repository.createDebtorApplication(input, metadata);
+      const application = repository.createDebtorApplication(
+        input,
+        metadata,
+        actor?.role === "debtor" ? actor.id : null
+      );
       const binding = repository.bindDocuments(
         input.supportingDocumentIds ?? [],
         "debtor_application",
@@ -44,7 +48,7 @@ export function createDebtBridgeService(repository) {
         "debtor_supporting_material"
       );
       if (!binding.ok) {
-        repository.store.debtorApplications.delete(application.id);
+        repository.deleteDebtorApplication(application.id);
         throw validationError({ supportingDocumentIds: `${binding.documentId}: ${binding.reason}` });
       }
       return {
@@ -54,30 +58,7 @@ export function createDebtBridgeService(repository) {
       };
     },
 
-    supplementDebtorApplication(id, input, actor) {
-      const application = getOrThrow(repository.store.debtorApplications, id, "欠款人申请不存在");
-      if (application.phoneNormalized !== actor.phone) throw forbidden("只能补充本人申请");
-      const documentIds = input.supportingDocumentIds ?? [];
-      if (!Array.isArray(documentIds)) throw validationError({ supportingDocumentIds: "附件引用必须是字符串数组" });
-      const binding = repository.bindDocuments(documentIds, "debtor_application", application.id, "debtor_supporting_material");
-      if (!binding.ok) throw validationError({ supportingDocumentIds: `${binding.documentId}: ${binding.reason}` });
-      const before = { status: application.status };
-      if (application.status === "need_more_info") application.status = "under_review";
-      application.hardshipDescription = input.note?.trim() || application.hardshipDescription;
-      application.updatedAt = new Date().toISOString();
-      repository.addAuditLog({
-        actor,
-        action: "DEBTOR_APPLICATION_SUPPLEMENT",
-        entityType: "debtor_application",
-        entityId: application.id,
-        before,
-        after: { status: application.status, documentCount: documentIds.length },
-        reason: input.note ?? null
-      });
-      return application;
-    },
-
-    createPartnerApplication(input) {
+    createPartnerApplication(input, actor = null) {
       validatePartnerApplication(input);
       if (
         [...repository.store.partnerOrganizations.values()].some(
@@ -90,7 +71,10 @@ export function createDebtBridgeService(repository) {
         });
       }
 
-      const organization = repository.createPartnerOrganization(input);
+      const organization = repository.createPartnerOrganization(
+        input,
+        actor?.role === "partner" ? actor.id : null
+      );
       const bindings = [
         [input.licenseDocumentIds, "partner_business_license"],
         [input.legalRepresentativeIdDocumentIds, "partner_legal_representative_id"],
@@ -99,7 +83,7 @@ export function createDebtBridgeService(repository) {
       for (const [documentIds, purpose] of bindings) {
         const binding = repository.bindDocuments(documentIds, "partner_organization", organization.id, purpose);
         if (!binding.ok) {
-          repository.store.partnerOrganizations.delete(organization.id);
+          repository.deletePartnerOrganization(organization.id);
           throw validationError({ [purpose]: `${binding.documentId}: ${binding.reason}` });
         }
       }
@@ -108,33 +92,6 @@ export function createDebtBridgeService(repository) {
         status: organization.status,
         submittedAt: organization.createdAt
       };
-    },
-
-    supplementPartnerOrganization(input, actor) {
-      const organization = getOrThrow(repository.store.partnerOrganizations, actor.organizationId, "机构不存在");
-      const bindings = [
-        [input.licenseDocumentIds ?? [], "partner_business_license"],
-        [input.legalRepresentativeIdDocumentIds ?? [], "partner_legal_representative_id"],
-        [input.qualificationDocumentIds ?? [], "partner_qualification"]
-      ];
-      for (const [documentIds, purpose] of bindings) {
-        if (!Array.isArray(documentIds)) throw validationError({ [purpose]: "附件引用必须是字符串数组" });
-        const binding = repository.bindDocuments(documentIds, "partner_organization", organization.id, purpose);
-        if (!binding.ok) throw validationError({ [purpose]: `${binding.documentId}: ${binding.reason}` });
-      }
-      const before = { status: organization.status };
-      if (organization.status === "need_more_info") organization.status = "under_review";
-      organization.updatedAt = new Date().toISOString();
-      repository.addAuditLog({
-        actor,
-        action: "PARTNER_ORGANIZATION_SUPPLEMENT",
-        entityType: "partner_organization",
-        entityId: organization.id,
-        before,
-        after: { status: organization.status },
-        reason: input.note ?? null
-      });
-      return organization;
     },
 
     reviewDebtorApplication(id, input, actor) {
@@ -154,6 +111,7 @@ export function createDebtBridgeService(repository) {
       application.reviewedAt = new Date().toISOString();
       application.updatedAt = application.reviewedAt;
       if (input.decision === "archived") application.archivedAt = application.reviewedAt;
+      repository.saveDebtorApplication(application);
       repository.addAuditLog({
         actor,
         action: "DEBTOR_APPLICATION_REVIEW",
@@ -194,6 +152,7 @@ export function createDebtBridgeService(repository) {
       organization.reviewedAt = new Date().toISOString();
       organization.updatedAt = organization.reviewedAt;
       organization.suspendedAt = input.decision === "suspended" ? organization.reviewedAt : null;
+      repository.savePartnerOrganization(organization);
       repository.addAuditLog({
         actor,
         action: "PARTNER_ORGANIZATION_REVIEW",
@@ -240,6 +199,7 @@ export function createDebtBridgeService(repository) {
       const before = { status: application.status };
       application.status = "matched";
       application.updatedAt = new Date().toISOString();
+      repository.saveDebtorApplication(application);
       repository.addAuditLog({
         actor,
         action: "MATCH_CASE_CREATE",
@@ -278,6 +238,7 @@ export function createDebtBridgeService(repository) {
       matchCase.updatedAt = matchCase.lastTransitionAt;
       matchCase.failureReason = ["failed", "cancelled"].includes(input.nextStatus) ? input.reason : null;
       if (input.nextStatus === "archived") matchCase.archivedAt = matchCase.lastTransitionAt;
+      repository.saveMatchCase(matchCase);
       repository.addAuditLog({
         actor,
         action: "MATCH_CASE_TRANSITION",

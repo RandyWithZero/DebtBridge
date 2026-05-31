@@ -31,6 +31,8 @@
 | `POST /api/debtor-applications` | 否 | 欠款人提交申请 |
 | `POST /api/partner-applications` | 否 | 机构提交入驻 |
 | `POST /api/documents/public-upload` | 否或一次性上传 token | 公开表单附件上传 |
+| `/api/debtor/*` | 欠款人 | 欠款人只能查看自己登录后提交的申请和关联案件 |
+| `/api/partner/*` | 机构 | 机构只能查看自己账号提交并审核通过后的机构资料和关联案件 |
 | `POST /api/admin/auth/login` | 否 | 后台登录 |
 | `/api/admin/*` | 是 | 后台审核、匹配、文件、审计 |
 
@@ -38,6 +40,13 @@
 
 - `operator`：审核、匹配、跟进、上传协议。
 - `manager`：包含 operator 权限，额外管理后台账号、暂停机构、查看审计日志。
+
+会话方案：
+
+- `POST /api/auth/login` 支持 `debtor`、`partner`、`operator`、`manager` 四类账号。
+- `POST /api/admin/auth/login` 兼容后台入口，仅允许 `operator`、`manager`。
+- 登录成功后返回 opaque session token，并设置 httpOnly `db_session` cookie；非浏览器客户端可继续使用 `Authorization: Bearer <token>`。
+- 种子账号密码使用 Node `scrypt` 哈希保存，运行时不保存明文密码。
 
 ## 3. 公开端 API 清单
 
@@ -175,7 +184,23 @@
 - 文件落盘后使用随机对象名。
 - 上传后只有通过业务提交绑定，才进入可审核状态；未绑定文件定期清理。
 
-## 4. 后台认证 API
+## 4. 身份门户 API
+
+### 欠款人提交和查询自己的申请
+
+- `POST /api/debtor/me/applications`：登录欠款人提交申请，字段同公开提交接口，后端把申请绑定到当前欠款人账号。
+- `GET /api/debtor/me/applications`：只返回当前欠款人自己的申请列表。
+- `GET /api/debtor/applications/{id}`：只允许申请归属欠款人读取详情、附件元数据和关联案件摘要。
+- `GET /api/debtor/me/match-cases`：只返回当前欠款人申请产生的案件。
+
+### 机构提交和查询自己的资料 / 案件
+
+- `POST /api/partner/me/application`：登录机构提交入驻资料，字段同公开入驻接口，后端把机构记录绑定到当前机构账号。
+- `GET /api/partner/me/organizations`：只返回当前机构账号提交的机构记录。
+- `GET /api/partner/me/match-cases`：只返回当前机构账号名下已激活机构的案件。
+- `GET /api/partner/match-cases/{id}`：只允许案件所属机构账号读取；欠款人姓名、手机号等敏感字段默认脱敏或不返回。
+
+## 5. 后台认证 API
 
 ### 登录
 
@@ -212,7 +237,7 @@
 
 `POST /api/admin/auth/logout`
 
-## 5. 后台欠款人申请 API
+## 6. 后台欠款人申请 API
 
 ### 列表
 

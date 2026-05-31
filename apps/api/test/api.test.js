@@ -118,60 +118,61 @@ describe("DebtBridge MVP API", () => {
     }
   });
 
-  it("exposes debtor-owned portal applications and blocks cross-user access", async () => {
-    const client = await startClient();
-    try {
-      const debtorToken = await loginClient(client, { role: "debtor", name: "张三", phone: "13800000000" });
-      const otherDebtorToken = await loginClient(client, { role: "debtor", name: "李四", phone: "13900000000" });
-
-      const created = await client.post("/api/client/debtor/applications", debtorPayload(), debtorToken);
-      assert.equal(created.status, 201);
-
-      const ownList = await client.get("/api/client/debtor/applications", debtorToken);
-      assert.equal(ownList.status, 200);
-      assert.equal(ownList.body.total, 1);
-      assert.equal(ownList.body.items[0].id, created.body.id);
-
-      const blocked = await client.get(`/api/client/debtor/applications/${created.body.id}`, otherDebtorToken);
-      assert.equal(blocked.status, 403);
-    } finally {
-      await client.close();
-    }
-  });
-
-  it("exposes partner profile and only assigned partner cases", async () => {
+  it("isolates debtor, partner, and admin identity APIs", async () => {
     const client = await startClient();
     try {
       const managerToken = await login(client);
-      const partnerToken = await loginClient(client, {
-        role: "partner",
-        organizationName: "某某法律咨询有限公司",
-        phone: "13900000000"
-      });
-      const org = await createActivePartner(client, managerToken, partnerToken);
-      const app = await createQualifiedApplication(client, managerToken);
+      const debtorToken = await login(client, "debtor@example.com");
+      const partnerToken = await login(client, "partner@example.com");
+
+      const adminBlockedFromDebtorArea = await client.get("/api/debtor/me/applications", managerToken);
+      assert.equal(adminBlockedFromDebtorArea.status, 403);
+
+      const debtorApplication = await client.post(
+        "/api/debtor/me/applications",
+        debtorPayload(),
+        debtorToken
+      );
+      assert.equal(debtorApplication.status, 201);
+
+      const debtorList = await client.get("/api/debtor/me/applications", debtorToken);
+      assert.equal(debtorList.status, 200);
+      assert.deepEqual(
+        debtorList.body.items.map((item) => item.id),
+        [debtorApplication.body.id]
+      );
+
+      const partnerOrg = await createActivePartner(client, managerToken, partnerToken);
+      const qualified = await qualifyApplication(client, managerToken, debtorApplication.body.id);
 
       const match = await client.post(
         "/api/admin/match-cases",
         {
-          applicationId: app.id,
-          partnerOrganizationId: org.id,
-          matchReason: "该机构可承接招商银行分期协商",
-          proposedPlan: { type: "installment", installmentMonths: 48 }
+          applicationId: qualified.id,
+          partnerOrganizationId: partnerOrg.id,
+          matchReason: "机构服务范围匹配",
+          proposedPlan: { type: "installment" }
         },
         managerToken
       );
       assert.equal(match.status, 201);
 
-      const profile = await client.get("/api/client/partner/profile", partnerToken);
-      assert.equal(profile.status, 200);
-      assert.equal(profile.body.organization.id, org.id);
+      const partnerCases = await client.get("/api/partner/me/match-cases", partnerToken);
+      assert.equal(partnerCases.status, 200);
+      assert.deepEqual(
+        partnerCases.body.items.map((item) => item.id),
+        [match.body.id]
+      );
 
-      const cases = await client.get("/api/client/partner/cases", partnerToken);
-      assert.equal(cases.status, 200);
-      assert.equal(cases.body.items.length, 1);
-      assert.equal(cases.body.items[0].id, match.body.id);
-      assert.equal(cases.body.items[0].debtor.nameMasked, "张*");
+      const debtorBlockedFromPartnerCase = await client.get(
+        `/api/partner/match-cases/${match.body.id}`,
+        debtorToken
+      );
+      assert.equal(debtorBlockedFromPartnerCase.status, 403);
+
+      const operatorToken = await login(client, "operator@example.com");
+      const auditBlocked = await client.get("/api/admin/audit-logs", operatorToken);
+      assert.equal(auditBlocked.status, 403);
     } finally {
       await client.close();
     }
@@ -181,16 +182,19 @@ describe("DebtBridge MVP API", () => {
 async function createQualifiedApplication(client, token) {
   const created = await client.post("/api/debtor-applications", debtorPayload());
   assert.equal(created.status, 201);
+  return qualifyApplication(client, token, created.body.id);
+}
 
+async function qualifyApplication(client, token, applicationId) {
   const underReview = await client.post(
-    `/api/admin/debtor-applications/${created.body.id}/review`,
+    `/api/admin/debtor-applications/${applicationId}/review`,
     { decision: "under_review", reason: "开始人工初审" },
     token
   );
   assert.equal(underReview.status, 200);
 
   const qualified = await client.post(
-    `/api/admin/debtor-applications/${created.body.id}/review`,
+    `/api/admin/debtor-applications/${applicationId}/review`,
     { decision: "qualified", reason: "符合信用卡协商初筛范围" },
     token
   );
@@ -202,27 +206,9 @@ async function createActivePartner(client, token, partnerToken) {
   const license = await uploadDocument(client, "partner_business_license");
   const idDoc = await uploadDocument(client, "partner_legal_representative_id");
   const qualification = await uploadDocument(client, "partner_qualification");
-  const payload = {
-    organizationName: "某某法律咨询有限公司",
-    unifiedSocialCreditCode: `91310000${Math.random().toString(36).slice(2, 12).toUpperCase()}`.slice(0, 18),
-    legalRepresentativeName: "李四",
-    contactName: "王五",
-    contactPhone: "13900000000",
-    serviceCities: ["上海", "杭州"],
-    acceptedBanks: ["招商银行", "工商银行"],
-    capabilities: ["installment", "interest_penalty_reduction"],
-    minInstallmentMonths: 12,
-    maxInstallmentMonths: 60,
-    averageProcessingDays: 15,
-    cooperationModes: ["success_fee"],
-    licenseDocumentIds: [license.id],
-    legalRepresentativeIdDocumentIds: [idDoc.id],
-    qualificationDocumentIds: [qualification.id],
-    complianceAccepted: true
-  };
   const created = await client.post(
-    partnerToken ? "/api/client/partner/onboarding" : "/api/partner-applications",
-    payload,
+    partnerToken ? "/api/partner/me/application" : "/api/partner-applications",
+    partnerPayload(license.id, idDoc.id, qualification.id),
     partnerToken
   );
   assert.equal(created.status, 201);
@@ -243,6 +229,27 @@ async function createActivePartner(client, token, partnerToken) {
   return active.body;
 }
 
+function partnerPayload(licenseId, idDocumentId, qualificationId) {
+  return {
+    organizationName: "某某法律咨询有限公司",
+    unifiedSocialCreditCode: `91310000${Math.random().toString(36).slice(2, 12).toUpperCase()}`.slice(0, 18),
+    legalRepresentativeName: "李四",
+    contactName: "王五",
+    contactPhone: "13900000000",
+    serviceCities: ["上海", "杭州"],
+    acceptedBanks: ["招商银行", "工商银行"],
+    capabilities: ["installment", "interest_penalty_reduction"],
+    minInstallmentMonths: 12,
+    maxInstallmentMonths: 60,
+    averageProcessingDays: 15,
+    cooperationModes: ["success_fee"],
+    licenseDocumentIds: [licenseId],
+    legalRepresentativeIdDocumentIds: [idDocumentId],
+    qualificationDocumentIds: [qualificationId],
+    complianceAccepted: true
+  };
+}
+
 async function uploadDocument(client, purpose) {
   const response = await client.post("/api/documents/public-upload", {
     filename: `${purpose}.pdf`,
@@ -255,13 +262,10 @@ async function uploadDocument(client, purpose) {
 }
 
 async function login(client, email = "admin@example.com") {
-  const response = await client.post("/api/admin/auth/login", { email, password: "password" });
-  assert.equal(response.status, 200);
-  return response.body.token;
-}
-
-async function loginClient(client, payload) {
-  const response = await client.post("/api/auth/login", payload);
+  const endpoint = ["admin@example.com", "operator@example.com"].includes(email)
+    ? "/api/admin/auth/login"
+    : "/api/auth/login";
+  const response = await client.post(endpoint, { email, password: "password" });
   assert.equal(response.status, 200);
   return response.body.token;
 }

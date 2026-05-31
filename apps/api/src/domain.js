@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { hashPassword } from "./auth.js";
 
 export const SERVICE_AGREEMENT_VERSION = "2026-05-01";
 export const MAX_UPLOAD_MB = 10;
@@ -63,18 +64,36 @@ export const MATCH_CASE_TRANSITIONS = {
 
 export const ADMIN_USERS = [
   {
-    id: "admin_1",
+    id: "00000000-0000-4000-8000-000000000001",
     email: "admin@example.com",
-    password: "password",
+    passwordHash: hashPassword("password", "debtbridge-admin-1"),
     role: "manager",
     displayName: "Default Manager"
   },
   {
-    id: "admin_2",
+    id: "00000000-0000-4000-8000-000000000002",
     email: "operator@example.com",
-    password: "password",
+    passwordHash: hashPassword("password", "debtbridge-admin-2"),
     role: "operator",
     displayName: "Default Operator"
+  }
+];
+
+export const IDENTITY_USERS = [
+  ...ADMIN_USERS,
+  {
+    id: "debtor_1",
+    email: "debtor@example.com",
+    passwordHash: hashPassword("password", "debtbridge-debtor-1"),
+    role: "debtor",
+    displayName: "Default Debtor"
+  },
+  {
+    id: "partner_1",
+    email: "partner@example.com",
+    passwordHash: hashPassword("password", "debtbridge-partner-1"),
+    role: "partner",
+    displayName: "Default Partner"
   }
 ];
 

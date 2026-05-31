@@ -14,6 +14,8 @@ Validate the Prisma schema:
 
 ```bash
 npm run db:validate
+```
+
 Prepare local environment variables:
 
 ```bash
@@ -67,6 +69,9 @@ Implemented endpoint groups:
 - Public document metadata upload: `POST /api/documents/public-upload`
 - Debtor intake: `POST /api/debtor-applications`
 - Partner onboarding: `POST /api/partner-applications`
+- Shared auth: `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`
+- Debtor portal: `POST /api/debtor/me/applications`, `GET /api/debtor/me/applications`, `GET /api/debtor/applications/:id`, `GET /api/debtor/me/match-cases`
+- Partner portal: `POST /api/partner/me/application`, `GET /api/partner/me/organizations`, `GET /api/partner/me/match-cases`, `GET /api/partner/match-cases/:id`
 - Admin auth: `POST /api/admin/auth/login`, `GET /api/admin/auth/me`, `POST /api/admin/auth/logout`
 - Admin debtor review: `GET /api/admin/debtor-applications`, `GET /api/admin/debtor-applications/:id`, `POST /api/admin/debtor-applications/:id/review`
 - Admin partner review: `GET /api/admin/partner-organizations`, `GET /api/admin/partner-organizations/:id`, `POST /api/admin/partner-organizations/:id/review`
@@ -74,7 +79,7 @@ Implemented endpoint groups:
 - Case follow-up: `POST /api/admin/match-cases/:id/notes`, `POST /api/admin/match-cases/:id/documents`
 - Audit: `GET /api/admin/audit-logs`
 
-The runtime MVP still stores data in memory while the API contract is being stabilized. PostgreSQL persistence is now modeled under `prisma/` so the backend can switch from the in-memory repository to Prisma without changing the public workflow shape.
+By default tests use the in-memory repository. Set `DATABASE_URL` to enable PostgreSQL persistence against the normalized tables created by `db/migrations/0001_debtbridge_mvp.sql`. Set `STORAGE_DRIVER=memory` to force the local memory adapter when a `DATABASE_URL` is present.
 
 ## PostgreSQL schema and migrations
 
@@ -110,8 +115,9 @@ The initial model covers:
 - `documents` for controlled file references only. Business tables do not store uploaded file binaries or public storage URLs.
 - `audit_logs` for review, status transition, matching, file, and account-management traceability.
 
-Backend integration should use transactions for application submission plus document binding, partner onboarding plus document binding, match creation plus application status update, and every review or case transition plus audit-log insert.
-The MVP stores data in memory. Document upload endpoints create controlled metadata records and bind references to business entities; they do not persist binary file contents yet. This keeps the API contract and workflow testable while leaving PostgreSQL, Prisma migrations, object storage, and production password hashing as the next infrastructure step.
+The backend repository writes application submission, partner onboarding, match creation, review transitions, document metadata, notes, and audit logs to the normalized PostgreSQL tables when `DATABASE_URL` is configured. Document upload endpoints create controlled metadata records and bind references to business entities; they do not persist binary file contents yet.
+
+Full REST API documentation is in `docs/api/rest-api.md`.
 
 ## CI and local infrastructure
 
@@ -122,6 +128,6 @@ Pull requests run `.github/workflows/ci.yml`, which verifies:
 - `docker compose config`.
 - Application container image build.
 
-The first SQL migration lives at `db/migrations/0001_debtbridge_mvp.sql`. It mirrors the MVP architecture docs and is intentionally kept as plain PostgreSQL SQL so it can be validated before GOO-15/GOO-16 choose the final repository adapter or ORM. The current API still uses the in-memory store until that backend integration lands.
+The first SQL migration lives at `db/migrations/0001_debtbridge_mvp.sql`. It mirrors the MVP architecture docs and is intentionally kept as plain PostgreSQL SQL so it can be validated independently of the runtime repository adapter.
 
 Local database defaults are development-only values in `.env.example`; production deployments must provide secrets through the target runtime or secret manager.

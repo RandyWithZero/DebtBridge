@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import {
-  ADMIN_USERS,
+  IDENTITY_USERS,
   SERVICE_AGREEMENT_VERSION,
   maskPhone,
   normalizePhone,
@@ -9,10 +9,10 @@ import {
   stripInternalDocumentFields
 } from "./domain.js";
 
-export function createStore() {
+export function createStore({ persistence } = {}) {
   const store = {
+    users: new Map(IDENTITY_USERS.map((user) => [user.id, { ...user, status: "active", lastLoginAt: null }])),
     sessions: new Map(),
-    clientSessions: new Map(),
     documents: new Map(),
     debtorApplications: new Map(),
     partnerOrganizations: new Map(),
@@ -21,34 +21,43 @@ export function createStore() {
     auditLogs: []
   };
 
-  return {
+  const repository = {
     store,
+    ready: persistence ? hydrateFromPersistence(store, persistence) : Promise.resolve(),
+
+    findUserByEmail(email) {
+      const normalized = String(email ?? "").trim().toLowerCase();
+      return [...store.users.values()].find((user) => user.email === normalized && user.status !== "disabled");
+    },
+
+    touchUserLogin(userId) {
+      const user = store.users.get(userId);
+      if (!user) return undefined;
+      user.lastLoginAt = nowIso();
+      persistRecord(persistence, "users", user.id, user);
+      return user;
+    },
+
+    getUser(id) {
+      return store.users.get(id);
+    },
 
     createSession(user) {
       const token = prefixedId("session");
       store.sessions.set(token, { token, userId: user.id, createdAt: nowIso() });
-      return token;
-    },
-
-    createClientSession(identity) {
-      const token = prefixedId("client_session");
-      store.clientSessions.set(token, { token, identity, createdAt: nowIso() });
+      persistRecord(persistence, "sessions", token, store.sessions.get(token));
       return token;
     },
 
     deleteSession(token) {
       store.sessions.delete(token);
-      store.clientSessions.delete(token);
+      deleteRecord(persistence, "sessions", token);
     },
 
     getSessionUser(token) {
       const session = store.sessions.get(token);
       if (!session) return undefined;
-      return ADMIN_USERS.find((user) => user.id === session.userId);
-    },
-
-    getClientSession(token) {
-      return store.clientSessions.get(token)?.identity;
+      return store.users.get(session.userId);
     },
 
     createDocument(input, uploadedByAdminId = null) {
@@ -74,6 +83,7 @@ export function createStore() {
         createdAt: now
       };
       store.documents.set(id, document);
+      persistRecord(persistence, "documents", id, document);
       return stripInternalDocumentFields(document);
     },
 
@@ -94,6 +104,7 @@ export function createStore() {
         document.ownerId = ownerId;
         document.status = "bound";
         document.boundAt = nowIso();
+        persistRecord(persistence, "documents", document.id, document);
       }
 
       return { ok: true };
@@ -109,11 +120,12 @@ export function createStore() {
       return store.documents.get(id);
     },
 
-    createDebtorApplication(input, metadata = {}) {
+    createDebtorApplication(input, metadata = {}, debtorUserId = null) {
       const id = prefixedId("app");
       const now = nowIso();
       const application = {
         id,
+        debtorUserId,
         name: input.name.trim(),
         phone: normalizePhone(input.phone),
         phoneNormalized: normalizePhone(input.phone),
@@ -145,14 +157,21 @@ export function createStore() {
         archivedAt: null
       };
       store.debtorApplications.set(id, application);
+      persistRecord(persistence, "debtorApplications", id, application);
       return application;
     },
 
-    createPartnerOrganization(input) {
+    deleteDebtorApplication(id) {
+      store.debtorApplications.delete(id);
+      deleteRecord(persistence, "debtorApplications", id);
+    },
+
+    createPartnerOrganization(input, partnerUserId = null) {
       const id = prefixedId("org");
       const now = nowIso();
       const organization = {
         id,
+        partnerUserId,
         organizationName: input.organizationName.trim(),
         unifiedSocialCreditCode: input.unifiedSocialCreditCode.trim().toUpperCase(),
         legalRepresentativeName: input.legalRepresentativeName.trim(),
@@ -177,7 +196,13 @@ export function createStore() {
         suspendedAt: null
       };
       store.partnerOrganizations.set(id, organization);
+      persistRecord(persistence, "partnerOrganizations", id, organization);
       return organization;
+    },
+
+    deletePartnerOrganization(id) {
+      store.partnerOrganizations.delete(id);
+      deleteRecord(persistence, "partnerOrganizations", id);
     },
 
     createMatchCase(input, actor) {
@@ -200,6 +225,22 @@ export function createStore() {
         archivedAt: null
       };
       store.matchCases.set(id, matchCase);
+      persistRecord(persistence, "matchCases", id, matchCase);
+      return matchCase;
+    },
+
+    saveDebtorApplication(application) {
+      persistRecord(persistence, "debtorApplications", application.id, application);
+      return application;
+    },
+
+    savePartnerOrganization(organization) {
+      persistRecord(persistence, "partnerOrganizations", organization.id, organization);
+      return organization;
+    },
+
+    saveMatchCase(matchCase) {
+      persistRecord(persistence, "matchCases", matchCase.id, matchCase);
       return matchCase;
     },
 
@@ -214,6 +255,7 @@ export function createStore() {
         createdAt: nowIso()
       };
       store.matchCaseNotes.set(id, note);
+      persistRecord(persistence, "matchCaseNotes", id, note);
       return note;
     },
 
@@ -231,6 +273,7 @@ export function createStore() {
         createdAt: nowIso()
       };
       store.auditLogs.push(log);
+      persistRecord(persistence, "auditLogs", log.id, log);
       return log;
     },
 
@@ -271,33 +314,49 @@ export function createStore() {
       );
     },
 
-    findDebtorApplicationsByPhone(phone) {
-      const normalized = normalizePhone(phone);
-      return [...store.debtorApplications.values()]
-        .filter((item) => item.phoneNormalized === normalized)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    listDebtorApplicationsForUser(userId, query = {}) {
+      return paginate(
+        [...store.debtorApplications.values()].filter((item) => item.debtorUserId === userId),
+        query,
+        toDebtorListItem
+      );
     },
 
-    findPartnerOrganizationByPhone(phone) {
-      const normalized = normalizePhone(phone);
-      return [...store.partnerOrganizations.values()]
-        .filter((item) => item.contactPhoneNormalized === normalized)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    listPartnerOrganizationsForUser(userId, query = {}) {
+      return paginate(
+        [...store.partnerOrganizations.values()].filter((item) => item.partnerUserId === userId),
+        query,
+        toPartnerListItem
+      );
     },
 
-    findMatchCasesByDebtorPhone(phone) {
-      const applicationIds = new Set(this.findDebtorApplicationsByPhone(phone).map((item) => item.id));
-      return [...store.matchCases.values()]
-        .filter((item) => applicationIds.has(item.debtorApplicationId))
-        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    listMatchCasesForPartner(organizationId, query = {}) {
+      return paginate(
+        [...store.matchCases.values()].filter(
+          (item) => item.partnerOrganizationId === organizationId && (!query.status || item.status === query.status)
+        ),
+        query,
+        (item) => item
+      );
     },
 
-    findMatchCasesByPartnerOrganization(id) {
-      return [...store.matchCases.values()]
-        .filter((item) => item.partnerOrganizationId === id)
-        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    listMatchCasesForDebtor(userId, query = {}) {
+      const applicationIds = new Set(
+        [...store.debtorApplications.values()]
+          .filter((application) => application.debtorUserId === userId)
+          .map((application) => application.id)
+      );
+      return paginate(
+        [...store.matchCases.values()].filter(
+          (item) => applicationIds.has(item.debtorApplicationId) && (!query.status || item.status === query.status)
+        ),
+        query,
+        (item) => item
+      );
     }
   };
+
+  return repository;
 }
 
 export function toDebtorListItem(application) {
@@ -352,4 +411,38 @@ function maskName(name) {
   if (!name) return "";
   if (name.length <= 1) return "*";
   return `${name[0]}${"*".repeat(Math.min(name.length - 1, 2))}`;
+}
+
+async function hydrateFromPersistence(store, persistence) {
+  await persistence.initialize();
+  const records = await persistence.loadAll();
+  for (const [collection, items] of Object.entries(records)) {
+    if (collection === "auditLogs") {
+      store.auditLogs = items;
+      continue;
+    }
+    const map = store[collection];
+    if (!(map instanceof Map)) continue;
+    for (const item of items) {
+      if (item?.id) map.set(item.id, item);
+      if (item?.token) map.set(item.token, item);
+    }
+  }
+  for (const user of IDENTITY_USERS) {
+    if (!store.users.has(user.id)) store.users.set(user.id, { ...user, status: "active", lastLoginAt: null });
+  }
+}
+
+function persistRecord(persistence, collection, id, data) {
+  if (!persistence) return;
+  persistence.saveRecord(collection, id, data).catch((error) => {
+    console.error(`PostgreSQL persistence failed for ${collection}/${id}:`, error);
+  });
+}
+
+function deleteRecord(persistence, collection, id) {
+  if (!persistence) return;
+  persistence.deleteRecord(collection, id).catch((error) => {
+    console.error(`PostgreSQL delete failed for ${collection}/${id}:`, error);
+  });
 }
