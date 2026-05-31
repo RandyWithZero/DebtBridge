@@ -4,7 +4,7 @@ import { stat } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ADMIN_USERS, PUBLIC_CONFIG, stripInternalDocumentFields } from "./domain.js";
+import { ADMIN_USERS, PUBLIC_CONFIG, maskPhone, normalizePhone, stripInternalDocumentFields } from "./domain.js";
 import { ApiError, forbidden, notFound, validationError } from "./errors.js";
 import { createDebtBridgeService } from "./service.js";
 import { createStore } from "./store.js";
@@ -26,7 +26,7 @@ export function createApp() {
       const route = matchRoute(request.method, url.pathname);
       if (!route) throw notFound("接口不存在");
 
-      const actor = route.admin ? requireAdmin(request, repository) : null;
+      const actor = route.admin ? requireAdmin(request, repository) : route.client ? requireClient(request, repository, route.client) : null;
       const body = await readJsonBody(request);
       const result = await route.handle({
         request,
@@ -98,20 +98,86 @@ const routes = [
     status: 201,
     body: service.createPartnerApplication(body)
   })),
-  route("POST", "/api/admin/auth/login", false, ({ body, repository }) => {
-    if (!body?.email || !body?.password) throw validationError({ email: "邮箱必填", password: "密码必填" });
-    const user = ADMIN_USERS.find(
-      (candidate) =>
-        candidate.email === String(body.email).trim().toLowerCase() && candidate.password === body.password
-    );
-    if (!user) throw forbidden("邮箱或密码不正确");
-    const token = repository.createSession(user);
-    return {
-      body: {
-        token,
-        user: publicUser(user)
+  route("POST", "/api/auth/login", false, ({ body, repository }) => {
+    if (body?.role === "admin") return loginAdmin(body, repository);
+    if (body?.role === "debtor") {
+      if (!body?.name || !body?.phone) throw validationError({ name: "姓名必填", phone: "手机号必填" });
+      const identity = {
+        role: "debtor",
+        name: String(body.name).trim(),
+        phone: normalizePhone(body.phone)
+      };
+      const token = repository.createClientSession(identity);
+      return { body: { token, user: publicClientIdentity(identity, repository) } };
+    }
+    if (body?.role === "partner") {
+      if (!body?.organizationName || !body?.phone) {
+        throw validationError({ organizationName: "机构名称必填", phone: "手机号必填" });
       }
-    };
+      const organization = repository.findPartnerOrganizationByPhone(body.phone);
+      const identity = {
+        role: "partner",
+        organizationName: String(body.organizationName).trim(),
+        phone: normalizePhone(body.phone),
+        organizationId: organization?.id ?? null
+      };
+      const token = repository.createClientSession(identity);
+      return { body: { token, user: publicClientIdentity(identity, repository) } };
+    }
+    throw validationError({ role: "登录身份不支持" });
+  }),
+  route("GET", "/api/auth/me", "any", ({ actor, repository }) => ({
+    body: { user: publicClientIdentity(actor, repository) }
+  })),
+  route("POST", "/api/auth/logout", "any", ({ request, repository }) => {
+    repository.deleteSession(getBearerToken(request));
+    return { body: { ok: true } };
+  }),
+  route("POST", "/api/client/debtor/applications", "debtor", ({ body, request, service, actor }) => ({
+    status: 201,
+    body: service.createDebtorApplication(
+      {
+        ...body,
+        name: actor.name,
+        phone: actor.phone
+      },
+      requestMetadata(request)
+    )
+  })),
+  route("GET", "/api/client/debtor/applications", "debtor", ({ actor, repository }) => ({
+    body: {
+      items: repository.findDebtorApplicationsByPhone(actor.phone).map(toDebtorPortalApplication),
+      total: repository.findDebtorApplicationsByPhone(actor.phone).length
+    }
+  })),
+  route("GET", /^\/api\/client\/debtor\/applications\/([^/]+)$/, "debtor", ({ params, actor, repository }) => {
+    const application = getOwnedDebtorApplication(params[0], actor, repository);
+    return { body: { ...toDebtorPortalApplication(application), documents: repository.listDocuments("debtor_application", application.id) } };
+  }),
+  route("POST", /^\/api\/client\/debtor\/applications\/([^/]+)\/supplements$/, "debtor", ({ params, body, actor, service }) => ({
+    body: toDebtorPortalApplication(service.supplementDebtorApplication(params[0], body, actor))
+  })),
+  route("GET", "/api/client/debtor/cases", "debtor", ({ actor, repository }) => ({
+    body: { items: repository.findMatchCasesByDebtorPhone(actor.phone).map((item) => toDebtorPortalCase(item, repository)) }
+  })),
+  route("GET", "/api/client/partner/profile", "partner", ({ actor, repository }) => ({
+    body: { organization: actor.organizationId ? toPartnerPortalOrganization(repository.store.partnerOrganizations.get(actor.organizationId), repository) : null }
+  })),
+  route("POST", "/api/client/partner/onboarding", "partner", ({ body, service, actor, repository }) => {
+    const result = service.createPartnerApplication(body);
+    const organization = repository.store.partnerOrganizations.get(result.id);
+    actor.organizationId = organization.id;
+    actor.organizationName = organization.organizationName;
+    return { status: 201, body: result };
+  }),
+  route("POST", "/api/client/partner/organization/supplements", "partner", ({ body, actor, service }) => ({
+    body: toPartnerPortalOrganization(service.supplementPartnerOrganization(body, actor), { listDocuments: () => [] })
+  })),
+  route("GET", "/api/client/partner/cases", "partner", ({ actor, repository }) => ({
+    body: { items: actor.organizationId ? repository.findMatchCasesByPartnerOrganization(actor.organizationId).map((item) => toPartnerPortalCase(item, repository)) : [] }
+  })),
+  route("POST", "/api/admin/auth/login", false, ({ body, repository }) => {
+    return loginAdmin(body, repository);
   }),
   route("GET", "/api/admin/auth/me", true, ({ actor }) => ({ body: { user: publicUser(actor) } })),
   route("POST", "/api/admin/auth/logout", true, ({ request, repository }) => {
@@ -192,8 +258,8 @@ const routes = [
   }))
 ];
 
-function route(method, path, admin, handle) {
-  return { method, path, admin, handle };
+function route(method, path, access, handle) {
+  return { method, path, admin: access === true, client: typeof access === "string" ? access : null, handle };
 }
 
 function matchRoute(method, pathname) {
@@ -228,6 +294,13 @@ function requireAdmin(request, repository) {
   const user = repository.getSessionUser(token);
   if (!user) throw forbidden("后台接口需要登录");
   return user;
+}
+
+function requireClient(request, repository, role) {
+  const identity = repository.getClientSession(getBearerToken(request));
+  if (!identity) throw forbidden("客户端接口需要登录");
+  if (role !== "any" && identity.role !== role) throw forbidden("当前身份无权访问该接口");
+  return identity;
 }
 
 function getBearerToken(request) {
@@ -275,6 +348,114 @@ function publicUser(user) {
     email: user.email,
     role: user.role,
     displayName: user.displayName
+  };
+}
+
+function loginAdmin(body, repository) {
+  if (!body?.email || !body?.password) throw validationError({ email: "邮箱必填", password: "密码必填" });
+  const user = ADMIN_USERS.find(
+    (candidate) =>
+      candidate.email === String(body.email).trim().toLowerCase() && candidate.password === body.password
+  );
+  if (!user) throw forbidden("邮箱或密码不正确");
+  const token = repository.createSession(user);
+  return {
+    body: {
+      token,
+      user: publicUser(user)
+    }
+  };
+}
+
+function publicClientIdentity(identity, repository) {
+  if (identity.role === "debtor") {
+    const applications = repository.findDebtorApplicationsByPhone(identity.phone);
+    return {
+      role: "debtor",
+      name: identity.name,
+      phoneMasked: maskPhone(identity.phone),
+      applicationCount: applications.length,
+      latestApplication: applications[0] ? toDebtorPortalApplication(applications[0]) : null
+    };
+  }
+  const organization = identity.organizationId ? repository.store.partnerOrganizations.get(identity.organizationId) : repository.findPartnerOrganizationByPhone(identity.phone);
+  if (organization && !identity.organizationId) identity.organizationId = organization.id;
+  return {
+    role: "partner",
+    organizationName: identity.organizationName,
+    phoneMasked: maskPhone(identity.phone),
+    organization: organization ? toPartnerPortalOrganization(organization, repository) : null
+  };
+}
+
+function getOwnedDebtorApplication(id, actor, repository) {
+  const application = repository.store.debtorApplications.get(id);
+  if (!application) throw notFound("欠款人申请不存在");
+  if (application.phoneNormalized !== actor.phone) throw forbidden("只能查看本人申请");
+  return application;
+}
+
+function toDebtorPortalApplication(application) {
+  return {
+    id: application.id,
+    nameMasked: application.name.length > 1 ? `${application.name[0]}*` : "*",
+    phoneMasked: maskPhone(application.phone),
+    city: application.city,
+    bankName: application.bankName,
+    totalDebtAmountCents: application.totalDebtAmountCents,
+    overdueRange: application.overdueRange,
+    status: application.status,
+    reviewReason: application.reviewReason,
+    createdAt: application.createdAt,
+    updatedAt: application.updatedAt,
+    submittedAt: application.createdAt
+  };
+}
+
+function toPartnerPortalOrganization(organization, repository) {
+  return {
+    id: organization.id,
+    organizationName: organization.organizationName,
+    contactPhoneMasked: maskPhone(organization.contactPhone),
+    serviceCities: organization.serviceCities,
+    acceptedBanks: organization.acceptedBanks,
+    capabilities: organization.capabilities,
+    status: organization.status,
+    reviewReason: organization.reviewReason,
+    createdAt: organization.createdAt,
+    updatedAt: organization.updatedAt,
+    documents: repository.listDocuments("partner_organization", organization.id)
+  };
+}
+
+function toDebtorPortalCase(matchCase, repository) {
+  const partner = repository.store.partnerOrganizations.get(matchCase.partnerOrganizationId);
+  return {
+    id: matchCase.id,
+    partnerOrganizationName: partner?.organizationName ?? "合作机构",
+    status: matchCase.status,
+    matchReason: matchCase.matchReason,
+    updatedAt: matchCase.updatedAt
+  };
+}
+
+function toPartnerPortalCase(matchCase, repository) {
+  const application = repository.store.debtorApplications.get(matchCase.debtorApplicationId);
+  return {
+    id: matchCase.id,
+    debtor: application
+      ? {
+          nameMasked: application.name.length > 1 ? `${application.name[0]}*` : "*",
+          city: application.city,
+          bankName: application.bankName,
+          totalDebtAmountCents: application.totalDebtAmountCents,
+          overdueRange: application.overdueRange,
+          expectedSolutions: application.expectedSolutions
+        }
+      : null,
+    status: matchCase.status,
+    matchReason: matchCase.matchReason,
+    updatedAt: matchCase.updatedAt
   };
 }
 
