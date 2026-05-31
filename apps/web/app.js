@@ -101,6 +101,8 @@ async function render() {
   if (route.startsWith("/partner") && route !== "/partner/login" && !state.partnerToken) return navigate("/partner/login");
   if (route.startsWith("/debtor") && route !== "/debtor/login") await loadDebtorPortal();
   if (route.startsWith("/partner") && route !== "/partner/login") await loadPartnerPortal();
+  if (route.startsWith("/debtor") && route !== "/debtor/login" && !state.debtorToken) return navigate("/debtor/login");
+  if (route.startsWith("/partner") && route !== "/partner/login" && !state.partnerToken) return navigate("/partner/login");
   if (route.startsWith("/admin") && state.adminToken) await loadAdminData();
 
   const app = $("#app");
@@ -193,9 +195,8 @@ function renderDebtorLogin() {
   return renderLoginPage({
     role: "debtor",
     title: "债务人身份认证",
-    copy: "输入姓名和手机号建立本地 MVP 会话。提交后只能查看本人的申请入口、状态和补充资料操作。",
-    phoneName: "phone",
-    nameName: "name",
+    copy: "使用后端债务人账号登录。登录后只能查看本人申请、状态和案件进度。",
+    email: "debtor@example.com",
     action: "进入债务人端"
   });
 }
@@ -204,22 +205,21 @@ function renderPartnerLogin() {
   return renderLoginPage({
     role: "partner",
     title: "机构登录与认证",
-    copy: "输入机构名称和联系人手机号进入机构端。审核通过前仅展示入驻资料、机构状态和合规操作。",
-    phoneName: "phone",
-    nameName: "name",
+    copy: "使用后端机构账号登录。审核通过前仅展示入驻资料、机构状态和合规操作。",
+    email: "partner@example.com",
     action: "进入机构端"
   });
 }
 
-function renderLoginPage({ role, title, copy, nameName, phoneName, action }) {
+function renderLoginPage({ role, title, copy, email, action }) {
   return `
     <section class="auth-page">
       <form class="auth-card" data-login="${role}">
         <p class="eyebrow">${role === "debtor" ? "持卡人入口" : "合作机构入口"}</p>
         <h1>${title}</h1>
         <p>${copy}</p>
-        <label>${role === "debtor" ? "姓名" : "机构名称"}<input name="${nameName}" required /></label>
-        <label>手机号<input name="${phoneName}" inputmode="tel" required /></label>
+        <label>邮箱<input name="email" type="email" value="${email}" required /></label>
+        <label>密码<input name="password" type="password" value="password" required /></label>
         <div class="form-status" data-form-status></div>
         <button class="button primary large" type="submit">${action}</button>
       </form>
@@ -234,24 +234,24 @@ function renderDebtorDashboard() {
   const session = state.debtorSession;
   const application = state.debtorApplications[0];
   return `
-    ${roleHeader("债务人工作台", `当前身份：${escapeHtml(session?.name || "持卡人")} / ${session?.phoneMasked || ""}`, "debtor")}
+    ${roleHeader("债务人工作台", `当前身份：${escapeHtml(session?.displayName || "持卡人")} / ${session?.email || ""}`, "debtor")}
     <section class="dashboard-grid">
       <article class="workspace-card">
         <div class="card-title"><h2>申请状态</h2>${statusBadge(application?.status || "need_more_info")}</div>
         ${application ? facts([
           ["申请编号", application.id],
-          ["提交时间", date(application.submittedAt)],
+          ["提交时间", date(application.submittedAt || application.createdAt)],
           ["当前说明", "平台将进行人工初审，审核通过后可能由合作机构联系您沟通方案。"]
         ]) : '<p class="empty">尚未提交申请。</p>'}
         <a class="button primary" href="/debtor/apply" data-link>${application ? "补充或重新提交资料" : "提交协商申请"}</a>
       </article>
       <article class="workspace-card">
         <h2>个人相关信息</h2>
-        ${facts([["姓名", session?.name || "持卡人"], ["手机号", session?.phoneMasked || "-"], ["资料权限", "仅本人入口展示申请状态和补充资料操作"]])}
+        ${facts([["账号", session?.displayName || "持卡人"], ["邮箱", session?.email || "-"], ["资料权限", "仅本人入口展示申请状态和补充资料操作"]])}
       </article>
       <article class="workspace-card wide-card">
         <div class="card-title"><h2>相关案件进度</h2><span class="badge">${state.debtorCases.length} 条</span></div>
-        ${state.debtorCases.length ? miniRows(state.debtorCases.map((item) => [shortId(item.id), item.partnerOrganizationName, labels.status[item.status] || item.status, date(item.updatedAt)])) : '<p class="empty">审核匹配前暂无案件进度。</p>'}
+        ${state.debtorCases.length ? miniRows(state.debtorCases.map((item) => [shortId(item.id), item.matchReason || "协商案件", labels.status[item.status] || item.status, date(item.updatedAt)])) : '<p class="empty">审核匹配前暂无案件进度。</p>'}
       </article>
     </section>`;
 }
@@ -274,7 +274,7 @@ function renderPartnerDashboard() {
   const session = state.partnerSession;
   const organization = state.partnerOrganization;
   return `
-    ${roleHeader("机构工作台", `当前机构：${escapeHtml(session?.name || organization?.organizationName || "合作机构")} / ${session?.phoneMasked || ""}`, "partner")}
+    ${roleHeader("机构工作台", `当前机构：${escapeHtml(organization?.organizationName || session?.displayName || "合作机构")} / ${session?.email || ""}`, "partner")}
     <section class="dashboard-grid">
       <article class="workspace-card">
         <div class="card-title"><h2>机构状态</h2>${statusBadge(organization?.status || "need_more_info")}</div>
@@ -283,7 +283,7 @@ function renderPartnerDashboard() {
       </article>
       <article class="workspace-card">
         <div class="card-title"><h2>可见合作案件</h2><span class="badge">${state.partnerCases.length} 条</span></div>
-        ${state.partnerCases.length ? miniRows(state.partnerCases.map((item) => [shortId(item.id), item.debtor?.city || "-", labels.status[item.status] || item.status, date(item.updatedAt)])) : '<p class="empty">案件信息需管理员审核通过并人工匹配后才可开放。</p>'}
+        ${state.partnerCases.length ? miniRows(state.partnerCases.map((item) => [shortId(item.id), item.matchReason || "授权案件", labels.status[item.status] || item.status, date(item.updatedAt)])) : '<p class="empty">案件信息需管理员审核通过并人工匹配后才可开放。</p>'}
       </article>
     </section>`;
 }
@@ -345,8 +345,8 @@ function debtorFormFields() {
   return `
     <div class="form-status" data-form-status></div>
     <fieldset><legend>个人信息</legend>
-      <label>姓名<input name="name" value="${escapeAttr(state.debtorSession?.name || "")}" autocomplete="name" required readonly /></label>
-      <label>手机号<input name="phone" value="${escapeAttr(state.debtorSession?.phone || "")}" inputmode="tel" autocomplete="tel" required readonly /></label>
+      <label>姓名<input name="name" autocomplete="name" required /></label>
+      <label>手机号<input name="phone" inputmode="tel" autocomplete="tel" required /></label>
       <label>所在城市<input name="city" required /></label>
     </fieldset>
     <fieldset><legend>信用卡债务信息</legend>
@@ -378,11 +378,11 @@ function partnerFormFields() {
   return `
     <div class="form-status" data-form-status></div>
     <fieldset><legend>机构信息</legend>
-      <label>公司名称<input name="organizationName" value="${escapeAttr(state.partnerSession?.name || state.partnerOrganization?.organizationName || "")}" required /></label>
+      <label>公司名称<input name="organizationName" value="${escapeAttr(state.partnerOrganization?.organizationName || "")}" required /></label>
       <label>统一社会信用代码<input name="unifiedSocialCreditCode" maxlength="18" required /></label>
       <label>法人姓名<input name="legalRepresentativeName" required /></label>
       <label>联系人姓名<input name="contactName" required /></label>
-      <label>联系电话<input name="contactPhone" value="${escapeAttr(state.partnerSession?.phone || "")}" inputmode="tel" required /></label>
+      <label>联系电话<input name="contactPhone" inputmode="tel" required /></label>
       <label>业务城市<input name="serviceCities" placeholder="上海, 杭州" required /></label>
     </fieldset>
     <fieldset><legend>资质上传</legend>
@@ -418,29 +418,26 @@ function bindRoleLogin(role) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(event.currentTarget);
-    const session = { name: text(data, "name"), phone: text(data, "phone") };
-    const fields = { ...required(session, ["name", "phone"]), ...(!/^1[3-9]\d{9}$/.test(session.phone) ? { phone: "手机号格式不正确" } : {}) };
+    const credentials = { email: text(data, "email"), password: text(data, "password") };
+    const fields = required(credentials, ["email", "password"]);
     clearErrors(form);
     if (Object.keys(fields).length) return showErrors(form, fields);
     try {
       setBusy(form, true);
       const result = await api("/api/auth/login", {
         method: "POST",
-        body:
-          role === "debtor"
-            ? { role, name: session.name, phone: session.phone }
-            : { role, organizationName: session.name, phone: session.phone }
+        body: credentials
       });
+      if (result.user.role !== role) throw new Error("账号身份与当前入口不匹配");
       if (role === "debtor") {
         state.debtorToken = result.token;
-        state.debtorSession = { name: session.name, phone: session.phone, phoneMasked: result.user.phoneMasked };
+        state.debtorSession = result.user;
         localStorage.setItem("debtbridgeDebtorToken", state.debtorToken);
         writeJson("debtbridgeDebtor", state.debtorSession);
         navigate("/debtor/dashboard");
       } else {
         state.partnerToken = result.token;
-        state.partnerSession = { name: session.name, phone: session.phone, phoneMasked: result.user.phoneMasked };
-        state.partnerOrganization = result.user.organization;
+        state.partnerSession = result.user;
         localStorage.setItem("debtbridgePartnerToken", state.partnerToken);
         writeJson("debtbridgePartner", state.partnerSession);
         navigate("/partner/dashboard");
@@ -491,7 +488,7 @@ async function submitDebtorForm(event) {
     setBusy(form, true);
     const filename = text(data, "supportingDocumentName");
     if (filename) payload.supportingDocumentIds = [(await uploadDocument(filename, "debtor_supporting_material")).id];
-    const result = await api("/api/client/debtor/applications", { method: "POST", body: payload, token: state.debtorToken });
+    const result = await api("/api/debtor/me/applications", { method: "POST", body: payload, token: state.debtorToken });
     await loadDebtorPortal();
     showStatus(form, `申请已提交，编号 ${result.id}。平台将进行人工初审。`, "success");
     setTimeout(() => navigate("/debtor/dashboard"), 500);
@@ -542,7 +539,7 @@ async function submitPartnerForm(event) {
     payload.licenseDocumentIds = [(await uploadDocument(text(data, "licenseDocument"), "partner_business_license")).id];
     payload.legalRepresentativeIdDocumentIds = [(await uploadDocument(text(data, "legalRepresentativeIdDocument"), "partner_legal_representative_id")).id];
     payload.qualificationDocumentIds = [(await uploadDocument(text(data, "qualificationDocument"), "partner_qualification")).id];
-    const result = await api("/api/client/partner/onboarding", { method: "POST", body: payload, token: state.partnerToken });
+    const result = await api("/api/partner/me/application", { method: "POST", body: payload, token: state.partnerToken });
     await loadPartnerPortal();
     showStatus(form, `入驻资料已提交，编号 ${result.id}。审核通过前不可查看或承接线索。`, "success");
     setTimeout(() => navigate("/partner/dashboard"), 500);
@@ -620,14 +617,10 @@ async function loadDebtorPortal() {
   try {
     const [me, applications, cases] = await Promise.all([
       api("/api/auth/me", { token: state.debtorToken }),
-      api("/api/client/debtor/applications", { token: state.debtorToken }),
-      api("/api/client/debtor/cases", { token: state.debtorToken })
+      api("/api/debtor/me/applications", { token: state.debtorToken }),
+      api("/api/debtor/me/match-cases", { token: state.debtorToken })
     ]);
-    state.debtorSession = {
-      ...state.debtorSession,
-      name: state.debtorSession?.name || me.user.name,
-      phoneMasked: me.user.phoneMasked
-    };
+    state.debtorSession = me.user;
     state.debtorApplications = applications.items;
     state.debtorCases = cases.items;
     writeJson("debtbridgeDebtor", state.debtorSession);
@@ -640,17 +633,13 @@ async function loadDebtorPortal() {
 
 async function loadPartnerPortal() {
   try {
-    const [me, profile, cases] = await Promise.all([
+    const [me, organizations, cases] = await Promise.all([
       api("/api/auth/me", { token: state.partnerToken }),
-      api("/api/client/partner/profile", { token: state.partnerToken }),
-      api("/api/client/partner/cases", { token: state.partnerToken })
+      api("/api/partner/me/organizations", { token: state.partnerToken }),
+      api("/api/partner/me/match-cases", { token: state.partnerToken })
     ]);
-    state.partnerSession = {
-      ...state.partnerSession,
-      name: state.partnerSession?.name || me.user.organizationName,
-      phoneMasked: me.user.phoneMasked
-    };
-    state.partnerOrganization = profile.organization;
+    state.partnerSession = me.user;
+    state.partnerOrganization = organizations.items[0] || null;
     state.partnerCases = cases.items;
     writeJson("debtbridgePartner", state.partnerSession);
   } catch {
