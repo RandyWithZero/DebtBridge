@@ -384,6 +384,8 @@ function fromDocumentRow(row) {
 }
 
 function fromDebtorApplicationRow(row) {
+  const monthlyIncomeCents = Number(row.monthly_income_cents);
+  const monthlyRepaymentCapacityCents = Number(row.monthly_repayment_capacity_cents);
   return {
     id: apiId("app", row.id),
     name: row.name,
@@ -395,9 +397,9 @@ function fromDebtorApplicationRow(row) {
     overdueRange: row.overdue_range,
     isUnderCollection: row.is_under_collection,
     hasLegalNotice: row.has_legal_notice,
-    monthlyIncomeCents: Number(row.monthly_income_cents),
-    monthlyRepaymentCapacityCents: Number(row.monthly_repayment_capacity_cents),
-    repaymentCapacityNeedsReview: row.monthly_repayment_capacity_cents > row.monthly_income_cents,
+    monthlyIncomeCents,
+    monthlyRepaymentCapacityCents,
+    repaymentCapacityNeedsReview: monthlyRepaymentCapacityCents > monthlyIncomeCents,
     expectedSolutions: row.expected_solutions,
     hardshipReasons: row.hardship_reasons,
     hardshipDescription: row.hardship_description,

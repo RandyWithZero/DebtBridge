@@ -75,6 +75,18 @@ describe("DebtBridge MVP API", () => {
       assert.equal(created.status, 201);
       assert.equal(created.body.status, "submitted");
       assert.match(created.body.id, /^app_/);
+
+      const token = await login(client);
+      const adminList = await client.get("/api/admin/debtor-applications?pageSize=100", token);
+      assert.equal(adminList.status, 200);
+      const adminItem = adminList.body.items.find((item) => item.id === created.body.id);
+      assert.equal(adminItem.isUnderCollection, true);
+      assert.equal(adminItem.hasLegalNotice, false);
+      assert.equal(adminItem.monthlyIncomeCents, debtorPayload().monthlyIncomeCents);
+      assert.equal(adminItem.monthlyRepaymentCapacityCents, debtorPayload().monthlyRepaymentCapacityCents);
+      assert.equal(adminItem.repaymentCapacityNeedsReview, false);
+      assert.deepEqual(adminItem.hardshipReasons, debtorPayload().hardshipReasons);
+      assert.equal(adminItem.hardshipDescription, debtorPayload().hardshipDescription);
     } finally {
       await client.close();
     }
@@ -173,6 +185,14 @@ describe("DebtBridge MVP API", () => {
       );
       assert.equal(created.status, 201);
       assert.equal(created.body.status, "pending_review");
+
+      const partnerList = await client.get("/api/admin/partner-organizations?pageSize=100", managerToken);
+      assert.equal(partnerList.status, 200);
+      const partnerItem = partnerList.body.items.find((item) => item.id === created.body.id);
+      assert.equal(partnerItem.minInstallmentMonths, 12);
+      assert.equal(partnerItem.maxInstallmentMonths, 60);
+      assert.equal(partnerItem.averageProcessingDays, 15);
+      assert.deepEqual(partnerItem.cooperationModes, ["success_fee"]);
 
       const underReview = await client.post(
         `/api/admin/partner-organizations/${created.body.id}/review`,
