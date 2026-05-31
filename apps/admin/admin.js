@@ -44,6 +44,26 @@ const navItems = [
   ["audit", "/admin/audit-logs", "审计记录"]
 ];
 
+const debtorReviewTransitions = {
+  submitted: ["under_review"],
+  under_review: ["need_more_info", "qualified", "rejected"],
+  need_more_info: ["under_review", "qualified", "rejected"],
+  qualified: ["archived"],
+  matched: ["archived"],
+  rejected: ["archived"],
+  withdrawn: ["archived"],
+  archived: []
+};
+
+const partnerReviewTransitions = {
+  pending_review: ["under_review", "rejected"],
+  under_review: ["active", "rejected", "need_more_info"],
+  need_more_info: ["under_review", "rejected"],
+  active: ["suspended"],
+  suspended: ["active", "rejected"],
+  rejected: []
+};
+
 const API_BASE = localStorage.getItem("debtbridgeApiBase") || "http://localhost:3000";
 
 const state = {
@@ -83,6 +103,7 @@ function routeKey() {
 }
 
 function navigate(path) {
+  clearPageError();
   history.pushState({}, "", path);
   render();
 }
@@ -121,7 +142,7 @@ async function render() {
             <button class="btn" id="logout" type="button">退出</button>
           </div>
         </header>
-        ${state.error ? `<div class="notice show error">${escapeHtml(state.error)}</div>` : ""}
+        ${state.error ? `<div class="notice show error page-error"><span>${escapeHtml(state.error)}</span><button class="btn danger" id="dismiss-error" type="button">关闭</button></div>` : ""}
         ${renderPage(page)}
       </div>
     </section>`;
@@ -232,7 +253,7 @@ function renderDebtors() {
       badge(lead.status),
       lead.status === "matched" ? "已匹配" : lead.status === "qualified" ? "可进入匹配" : "待审核完成",
       date(lead.updatedAt || lead.createdAt),
-      actionButtons("lead", lead.id, [["under_review", "开始初审"], ["qualified", "通过"], ["need_more_info", "补充"], ["rejected", "拒绝"]])
+      actionButtons("lead", lead.id, lead.status, [["under_review", "开始初审"], ["qualified", "通过"], ["need_more_info", "补充"], ["rejected", "拒绝"], ["archived", "归档"]], debtorReviewTransitions)
     ])
   });
 }
@@ -251,7 +272,7 @@ function renderPartners() {
       state.cases.filter((item) => item.partnerOrganizationId === partner.id).length,
       `${countCasesForPartner(partner.id, ["success"])} / ${countCasesForPartner(partner.id, ["failed", "cancelled"])}`,
       date(partner.reviewedAt || partner.updatedAt),
-      actionButtons("partner", partner.id, [["under_review", "开始审核"], ["active", "通过"], ["need_more_info", "补充"], ["rejected", "拒绝"], ["suspended", "暂停"]])
+      actionButtons("partner", partner.id, partner.status, [["under_review", "开始审核"], ["active", "通过"], ["need_more_info", "补充"], ["rejected", "拒绝"], ["suspended", "暂停"]], partnerReviewTransitions)
     ])
   });
 }
@@ -263,6 +284,7 @@ function renderMatching() {
   const partner = partners.find((item) => item.id === state.selectedPartnerId) || partners[0];
   state.selectedLeadId = lead?.id || "";
   state.selectedPartnerId = partner?.id || "";
+  const matchBlocker = lead && partner ? partnerMatchBlocker(lead, partner) : "";
   return `
     <section class="match-board">
       <article>
@@ -271,13 +293,14 @@ function renderMatching() {
       </article>
       <article>
         <h2>候选机构</h2>
-        ${partners.length ? partnerTable(partners) : '<p class="empty">暂无已启用机构。</p>'}
+        ${partners.length ? partnerTable(partners, lead) : '<p class="empty">暂无已启用机构。</p>'}
       </article>
       <article>
         <h2>创建匹配</h2>
         ${partner ? facts([["机构", partner.organizationName], ["城市", partner.serviceCities.join("、")], ["能力", partner.capabilities.map((item) => labels.solution[item] || item).join("、")]]) : ""}
+        ${matchBlocker ? `<p class="inline-error">${escapeHtml(matchBlocker)}</p>` : ""}
         <label>推荐理由<textarea id="match-reason" rows="5">机构服务城市、承接银行和协商能力与该申请匹配；后续方案以银行或持牌机构最终确认为准。</textarea></label>
-        <button class="btn primary" id="create-match" type="button" ${lead && partner ? "" : "disabled"}>推荐机构并进入沟通</button>
+        <button class="btn primary" id="create-match" type="button" ${lead && partner && !matchBlocker ? "" : "disabled"}>推荐机构并进入沟通</button>
       </article>
     </section>`;
 }
@@ -378,6 +401,15 @@ function bindLogin() {
 }
 
 function bindShell() {
+  $("#dismiss-error")?.addEventListener("click", () => {
+    clearPageError();
+    render();
+  });
+  $(".workspace")?.addEventListener("click", (event) => {
+    if (!state.error || event.target.closest(".notice, button, a, input, select, textarea")) return;
+    clearPageError();
+    render();
+  });
   $("#refresh")?.addEventListener("click", async () => {
     await refreshData();
     render();
@@ -386,10 +418,12 @@ function bindShell() {
   $$("[data-lead-action]").forEach((button) => button.addEventListener("click", () => reviewLead(button.dataset.id, button.dataset.leadAction)));
   $$("[data-partner-action]").forEach((button) => button.addEventListener("click", () => reviewPartner(button.dataset.id, button.dataset.partnerAction)));
   $$("[data-select-partner]").forEach((button) => button.addEventListener("click", () => {
+    clearPageError();
     state.selectedPartnerId = button.dataset.selectPartner;
     render();
   }));
   $("#match-lead")?.addEventListener("change", (event) => {
+    clearPageError();
     state.selectedLeadId = event.target.value;
     render();
   });
@@ -439,6 +473,14 @@ async function reviewPartner(id, decision) {
 }
 
 async function createMatch() {
+  const lead = state.leads.find((item) => item.id === state.selectedLeadId);
+  const partner = state.partners.find((item) => item.id === state.selectedPartnerId);
+  const blocker = lead && partner ? partnerMatchBlocker(lead, partner) : "请选择已通过申请和候选机构";
+  if (blocker) {
+    state.error = blocker;
+    render();
+    return;
+  }
   await runAction(() => api("/api/admin/match-cases", {
     method: "POST",
     body: {
@@ -499,8 +541,22 @@ async function rawApi(path, options = {}) {
     body: options.body ? JSON.stringify(options.body) : undefined
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error?.message || "请求失败");
+  if (!response.ok) throw new Error(apiErrorMessage(data));
   return data;
+}
+
+function apiErrorMessage(data) {
+  const error = data?.error || {};
+  const fieldMessages = error.fields
+    ? Object.values(error.fields)
+        .map((message) => String(message))
+        .join("；")
+    : "";
+  return fieldMessages || error.message || "请求失败";
+}
+
+function clearPageError() {
+  state.error = "";
 }
 
 function dataTable({ title, headers, rows }) {
@@ -532,8 +588,11 @@ function queueTable() {
   });
 }
 
-function partnerTable(partners) {
-  return `<div class="table-wrap"><table><thead><tr><th>机构名称</th><th>业务城市</th><th>可承接银行</th><th>可做方案</th><th>当前案件数</th><th>历史完成率</th><th>资质状态</th><th>操作</th></tr></thead><tbody>${partners.map((partner) => `<tr><td>${partner.organizationName}</td><td>${partner.serviceCities.join("、")}</td><td>${partner.acceptedBanks.join("、")}</td><td>${partner.capabilities.map((item) => labels.solution[item] || item).join("、")}</td><td>${countCasesForPartner(partner.id, ["matched", "contacted", "negotiating", "agreement_pending", "agreement_signed", "in_repayment"])}</td><td>${completionRate(partner.id)}</td><td>${badge(partner.status)}</td><td><button class="btn" data-select-partner="${partner.id}" type="button">选择</button></td></tr>`).join("")}</tbody></table></div>`;
+function partnerTable(partners, lead) {
+  return `<div class="table-wrap"><table><thead><tr><th>机构名称</th><th>业务城市</th><th>可承接银行</th><th>可做方案</th><th>当前案件数</th><th>历史完成率</th><th>资质状态</th><th>匹配判断</th><th>操作</th></tr></thead><tbody>${partners.map((partner) => {
+    const blocker = lead ? partnerMatchBlocker(lead, partner) : "请先选择申请";
+    return `<tr><td>${partner.organizationName}</td><td>${partner.serviceCities.join("、")}</td><td>${partner.acceptedBanks.join("、")}</td><td>${partner.capabilities.map((item) => labels.solution[item] || item).join("、")}</td><td>${countCasesForPartner(partner.id, ["matched", "contacted", "negotiating", "agreement_pending", "agreement_signed", "in_repayment"])}</td><td>${completionRate(partner.id)}</td><td>${badge(partner.status)}</td><td>${blocker ? `<span class="badge error">${escapeHtml(blocker)}</span>` : '<span class="badge success">可匹配</span>'}</td><td><button class="btn" data-select-partner="${partner.id}" type="button" ${blocker ? "disabled" : ""}>选择</button></td></tr>`;
+  }).join("")}</tbody></table></div>`;
 }
 
 function metric(label, value) {
@@ -553,8 +612,27 @@ function select(id, items, selected, labeler) {
   return `<select id="${id}">${items.map((item) => `<option value="${item.id}" ${item.id === selected ? "selected" : ""}>${escapeHtml(labeler(item))}</option>`).join("")}</select>`;
 }
 
-function actionButtons(type, id, actions) {
-  return `<div class="row-actions">${actions.map(([action, label]) => `<button class="btn ${action === "rejected" ? "danger" : action === "need_more_info" || action === "suspended" ? "warn" : ""}" data-${type}-action="${action}" data-id="${id}" type="button">${label}</button>`).join("")}</div>`;
+function actionButtons(type, id, status, actions, transitions) {
+  const allowed = new Set(transitions[status] || []);
+  return `<div class="row-actions">${actions.map(([action, label]) => {
+    const disabled = !allowed.has(action) || (type === "partner" && action === "suspended" && state.user.role !== "manager");
+    return `<button class="btn ${actionClass(action)}" data-${type}-action="${action}" data-id="${id}" type="button" ${disabled ? "disabled" : ""}>${label}</button>`;
+  }).join("")}</div>`;
+}
+
+function actionClass(action) {
+  return action === "rejected" || action === "failed" || action === "cancelled"
+    ? "danger"
+    : action === "need_more_info" || action === "suspended"
+      ? "warn"
+      : "";
+}
+
+function partnerMatchBlocker(lead, partner) {
+  if (!partner.serviceCities.includes(lead.city)) return "服务城市不覆盖";
+  if (!partner.acceptedBanks.includes(lead.bankName)) return "承接银行不覆盖";
+  if (!(lead.expectedSolutions || []).some((solution) => partner.capabilities.includes(solution))) return "协商能力不覆盖";
+  return "";
 }
 
 function nextStatuses(status) {

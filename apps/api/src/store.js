@@ -383,8 +383,10 @@ export function toDebtorListItem(application) {
     bankName: application.bankName,
     totalDebtAmountCents: application.totalDebtAmountCents,
     overdueRange: application.overdueRange,
+    expectedSolutions: application.expectedSolutions,
     status: application.status,
-    createdAt: application.createdAt
+    createdAt: application.createdAt,
+    updatedAt: application.updatedAt
   };
 }
 
@@ -397,7 +399,9 @@ export function toPartnerListItem(organization) {
     acceptedBanks: organization.acceptedBanks,
     capabilities: organization.capabilities,
     status: organization.status,
-    createdAt: organization.createdAt
+    createdAt: organization.createdAt,
+    updatedAt: organization.updatedAt,
+    reviewedAt: organization.reviewedAt
   };
 }
 

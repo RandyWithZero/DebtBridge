@@ -322,6 +322,7 @@ h3 {
 
 .section {
   padding: 72px max(56px, calc((100vw - var(--content-max)) / 2));
+  scroll-margin-top: 72px;
 }
 
 .section-heading {
