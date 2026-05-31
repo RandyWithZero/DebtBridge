@@ -10,7 +10,6 @@ import { createStore } from "./store.js";
 const API_DESCRIPTION = "DebtBridge backend API";
 const CORS_METHODS = "GET,POST,OPTIONS";
 const CORS_HEADERS = "Content-Type,Authorization";
-
 export function createApp() {
   const persistence =
     process.env.STORAGE_DRIVER === "memory" ? null : createPostgresPersistence(process.env.DATABASE_URL);
@@ -358,7 +357,9 @@ function getAllowedOrigins() {
   const rawOrigins = [
     process.env.CLIENT_ORIGIN,
     process.env.ADMIN_ORIGIN,
-    process.env.CORS_ORIGINS
+    process.env.CORS_ORIGINS,
+    "http://localhost:5173",
+    "http://127.0.0.1:5173"
   ].filter(Boolean);
 
   return new Set(
