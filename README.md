@@ -46,15 +46,33 @@ npm run db:migrate:compose
 npm run db:seed:compose
 ```
 
-Run the local API service:
+Run the API-only backend:
+
+```bash
+npm run start:api
+```
+
+Open `http://localhost:3000/` for a JSON service descriptor, or `http://localhost:3000/api/health` for health checks. The backend does not serve the client product UI or admin UI; those are separate frontend apps that call this API.
+
+Run the client frontend in a second terminal:
 
 ```bash
 npm run start:client
 ```
 
-Open `http://localhost:3000/` for a JSON service descriptor, or `http://localhost:3000/api/health` for health checks. The backend does not serve the client product UI or admin UI; those are separate frontend apps that call this API.
+Open `http://localhost:3001` for debtor and partner login access.
 
-For admin API-only local verification, the same server can be started with the explicit alias:
+Run the admin frontend in a third terminal:
+
+```bash
+npm run start:admin
+```
+
+Open `http://localhost:3002` for the platform management back office.
+
+When accessing Docker from another machine or a remote preview host, open the same host on ports `3001` and `3002`; the browser frontends derive the API base as `<current protocol>//<current host>:3000`. For custom domains or proxies, set `ALLOWED_ORIGINS` to the comma-separated browser origins and override `debtbridgeApiBase` in local storage if the API is not exposed on port `3000`.
+
+Validate frontend entrypoints:
 
 ```bash
 npm run test:frontends
@@ -149,8 +167,9 @@ ADMIN_API_BASE_URL=http://localhost:3000/api
 Configure the backend CORS allowlist with the browser origins of the two frontend apps:
 
 ```bash
-CLIENT_ORIGIN=http://localhost:5173
-ADMIN_ORIGIN=http://localhost:5174
+CLIENT_ORIGIN=http://localhost:3001
+ADMIN_ORIGIN=http://localhost:3002
+ALLOWED_ORIGINS=
 CORS_ORIGINS=
 ```
 

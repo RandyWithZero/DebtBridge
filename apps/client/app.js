@@ -1,4 +1,4 @@
-const API_BASE = localStorage.getItem("debtbridgeApiBase") || "http://localhost:3000";
+const API_BASE = localStorage.getItem("debtbridgeApiBase") || `${location.protocol}//${location.hostname}:3000`;
 const app = document.querySelector("#app");
 
 const state = {

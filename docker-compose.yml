@@ -22,6 +22,7 @@ services:
       PORT: ${PORT:-3000}
       CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:3001}
       ADMIN_ORIGIN: ${ADMIN_ORIGIN:-http://localhost:3002}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       CLIENT_URL: ${CLIENT_URL:-http://localhost:3001}
       ADMIN_URL: ${ADMIN_URL:-http://localhost:3002}
       DATABASE_URL: postgres://${POSTGRES_USER:-debtbridge}:${POSTGRES_PASSWORD:-debtbridge_dev_password}@postgres:5432/${POSTGRES_DB:-debtbridge}

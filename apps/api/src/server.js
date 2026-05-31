@@ -346,7 +346,7 @@ function corsHeaders(request) {
     "access-control-max-age": "600"
   };
 
-  if (origin && allowedOrigins.has(origin)) {
+  if (origin && (allowedOrigins.has(origin) || isExposedFrontendOrigin(origin))) {
     headers["access-control-allow-origin"] = origin;
     headers["access-control-allow-credentials"] = "true";
   }
@@ -358,6 +358,7 @@ function getAllowedOrigins() {
   const rawOrigins = [
     process.env.CLIENT_ORIGIN,
     process.env.ADMIN_ORIGIN,
+    process.env.ALLOWED_ORIGINS,
     process.env.CORS_ORIGINS
   ].filter(Boolean);
 
@@ -367,6 +368,15 @@ function getAllowedOrigins() {
       .map((value) => value.trim())
       .filter(Boolean)
   );
+}
+
+function isExposedFrontendOrigin(origin) {
+  try {
+    const url = new URL(origin);
+    return ["http:", "https:"].includes(url.protocol) && ["3001", "3002"].includes(url.port);
+  } catch {
+    return false;
+  }
 }
 
 function requestMetadata(request) {
