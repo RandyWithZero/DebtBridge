@@ -4,6 +4,51 @@ import http from "node:http";
 import { createApp } from "../src/server.js";
 
 describe("DebtBridge MVP API", () => {
+  it("exposes API-only root and health responses without serving web pages", async () => {
+    const client = await startClient();
+    try {
+      const root = await client.get("/");
+      assert.equal(root.status, 200);
+      assert.equal(root.headers["content-type"], "application/json; charset=utf-8");
+      assert.equal(root.body.service, "DebtBridge backend API");
+      assert.equal(root.body.baseUrl, "/api");
+
+      const health = await client.get("/api/health");
+      assert.equal(health.status, 200);
+      assert.equal(health.body.status, "ok");
+      assert.equal(health.body.service, "debtbridge-api");
+
+      const legacyPage = await client.get("/app.js");
+      assert.equal(legacyPage.status, 404);
+      assert.equal(legacyPage.headers["content-type"], "application/json; charset=utf-8");
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("allows configured client and admin origins to call the API with credentials", async () => {
+    const client = await startClient({
+      CLIENT_ORIGIN: "http://localhost:5173",
+      ADMIN_ORIGIN: "http://localhost:5174"
+    });
+    try {
+      const clientConfig = await client.get("/api/public/config", undefined, "http://localhost:5173");
+      assert.equal(clientConfig.status, 200);
+      assert.equal(clientConfig.headers["access-control-allow-origin"], "http://localhost:5173");
+      assert.equal(clientConfig.headers["access-control-allow-credentials"], "true");
+
+      const adminPreflight = await client.options("/api/admin/auth/login", "http://localhost:5174");
+      assert.equal(adminPreflight.status, 204);
+      assert.equal(adminPreflight.headers["access-control-allow-origin"], "http://localhost:5174");
+
+      const rejectedPreflight = await client.options("/api/public/config", "http://localhost:9999");
+      assert.equal(rejectedPreflight.status, 403);
+      assert.equal(rejectedPreflight.body.error.code, "CORS_ORIGIN_FORBIDDEN");
+    } finally {
+      await client.close();
+    }
+  });
+
   it("accepts debtor applications and rejects missing commitments", async () => {
     const client = await startClient();
     try {
@@ -177,22 +222,15 @@ describe("DebtBridge MVP API", () => {
       await client.close();
     }
   });
-
-  it("serves a separate admin frontend and exposes manager-only admin users", async () => {
+  it("exposes manager-only admin users without serving admin pages", async () => {
     const client = await startClient();
     try {
       const managerToken = await login(client);
       const operatorToken = await login(client, "operator@example.com");
 
-      const publicHtml = await client.text("/");
-      assert.equal(publicHtml.status, 200);
-      assert.match(publicHtml.body, /DebtBridge \| 信用卡逾期协商信息撮合/);
-      assert.doesNotMatch(publicHtml.body, /管理后台/);
-
-      const adminHtml = await client.text("/admin/dashboard");
-      assert.equal(adminHtml.status, 200);
-      assert.match(adminHtml.body, /DebtBridge 后台管理/);
-      assert.match(adminHtml.body, /\/admin\/admin\.js/);
+      const adminPage = await client.get("/admin/dashboard");
+      assert.equal(adminPage.status, 404);
+      assert.equal(adminPage.headers["content-type"], "application/json; charset=utf-8");
 
       const users = await client.get("/api/admin/users", managerToken);
       assert.equal(users.status, 200);
@@ -323,44 +361,51 @@ function debtorPayload() {
   };
 }
 
-async function startClient() {
+async function startClient(env = {}) {
+  const previousEnv = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, env);
   const { handler } = createApp();
   const server = http.createServer(handler);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
   return {
-    async get(path, token) {
-      return request(port, "GET", path, undefined, token);
+    async get(path, token, origin) {
+      return request(port, "GET", path, undefined, token, origin);
     },
-    async post(path, body, token) {
-      return request(port, "POST", path, body, token);
+    async post(path, body, token, origin) {
+      return request(port, "POST", path, body, token, origin);
     },
-    async text(path) {
-      const response = await fetch(`http://127.0.0.1:${port}${path}`);
-      return {
-        status: response.status,
-        body: await response.text()
-      };
+    async options(path, origin) {
+      return request(port, "OPTIONS", path, undefined, undefined, origin);
     },
     close() {
       return new Promise((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
+        server.close((error) => {
+          for (const [key, value] of Object.entries(previousEnv)) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+          }
+          return error ? reject(error) : resolve();
+        });
       });
     }
   };
 }
 
-async function request(port, method, path, body, token) {
+async function request(port, method, path, body, token, origin) {
   const response = await fetch(`http://127.0.0.1:${port}${path}`, {
     method,
     headers: {
       "content-type": "application/json",
-      ...(token ? { authorization: `Bearer ${token}` } : {})
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(origin ? { origin } : {})
     },
     body: body === undefined ? undefined : JSON.stringify(body)
   });
+  const rawBody = await response.text();
   return {
     status: response.status,
-    body: await response.json()
+    headers: Object.fromEntries(response.headers.entries()),
+    body: rawBody ? JSON.parse(rawBody) : {}
   };
 }

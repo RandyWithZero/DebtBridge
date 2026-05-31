@@ -1,9 +1,5 @@
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
 import http from "node:http";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { clearSessionCookie, getSessionToken, sessionCookie, verifyPassword } from "./auth.js";
 import { PUBLIC_CONFIG, stripInternalDocumentFields } from "./domain.js";
 import { ApiError, forbidden, notFound, validationError } from "./errors.js";
@@ -11,9 +7,9 @@ import { createPostgresPersistence } from "./postgres-store.js";
 import { createDebtBridgeService } from "./service.js";
 import { createStore } from "./store.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const WEB_ROOT = path.resolve(__dirname, "../../web");
-const ADMIN_WEB_ROOT = path.resolve(__dirname, "../../admin");
+const API_DESCRIPTION = "DebtBridge backend API";
+const CORS_METHODS = "GET,POST,OPTIONS";
+const CORS_HEADERS = "Content-Type,Authorization";
 
 export function createApp() {
   const persistence =
@@ -23,12 +19,13 @@ export function createApp() {
 
   async function handler(request, response) {
     try {
+      if (request.method === "OPTIONS") {
+        writePreflight(request, response);
+        return;
+      }
+
       await repository.ready;
       const url = new URL(request.url, "http://localhost");
-      if (!url.pathname.startsWith("/api/")) {
-        const served = await serveStatic(request, response, url);
-        if (served) return;
-      }
       const route = matchRoute(request.method, url.pathname);
       if (!route) throw notFound("接口不存在");
 
@@ -44,52 +41,13 @@ export function createApp() {
         service
       });
 
-      writeJson(response, result.status ?? 200, result.body, result.headers);
+      writeJson(request, response, result.status ?? 200, result.body, result.headers);
     } catch (error) {
-      writeError(response, error);
+      writeError(request, response, error);
     }
   }
 
   return { handler, repository, service };
-}
-
-async function serveStatic(request, response, url) {
-  if (request.method !== "GET" && request.method !== "HEAD") return false;
-  const pathname = decodeURIComponent(url.pathname);
-  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
-    return serveStaticFromRoot(ADMIN_WEB_ROOT, pathname.replace(/^\/admin\/?/, ""));
-  }
-  return serveStaticFromRoot(WEB_ROOT, pathname === "/" ? "index.html" : pathname.slice(1));
-
-  async function serveStaticFromRoot(root, relativePath) {
-    const requestedPath = path.resolve(root, relativePath || "index.html");
-    const filePath = requestedPath.startsWith(root) ? requestedPath : path.join(root, "index.html");
-    try {
-      const fileStat = await stat(filePath);
-      if (!fileStat.isFile()) return streamFile(path.join(root, "index.html"), response);
-      return streamFile(filePath, response);
-    } catch {
-      return streamFile(path.join(root, "index.html"), response);
-    }
-  }
-}
-
-function streamFile(filePath, response) {
-  response.writeHead(200, { "content-type": contentType(filePath) });
-  createReadStream(filePath).pipe(response);
-  return true;
-}
-
-function contentType(filePath) {
-  const extension = path.extname(filePath);
-  return (
-    {
-      ".html": "text/html; charset=utf-8",
-      ".css": "text/css; charset=utf-8",
-      ".js": "text/javascript; charset=utf-8",
-      ".svg": "image/svg+xml"
-    }[extension] ?? "application/octet-stream"
-  );
 }
 
 export function createHttpServer() {
@@ -97,6 +55,22 @@ export function createHttpServer() {
 }
 
 const routes = [
+  route("GET", "/", null, ({}) => ({
+    body: {
+      service: API_DESCRIPTION,
+      status: "ok",
+      baseUrl: "/api",
+      health: "/api/health",
+      docs: "docs/api/rest-api.md"
+    }
+  })),
+  route("GET", "/api/health", null, ({ repository }) => ({
+    body: {
+      status: "ok",
+      service: "debtbridge-api",
+      storage: repository.storageDriver
+    }
+  })),
   route("GET", "/api/public/config", null, ({}) => ({ body: PUBLIC_CONFIG })),
   route("POST", "/api/documents/public-upload", null, ({ body, service }) => ({
     status: 201,
@@ -318,17 +292,18 @@ function logoutRoute() {
   };
 }
 
-function writeJson(response, status, body, headers = {}) {
+function writeJson(request, response, status, body, headers = {}) {
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
+    ...corsHeaders(request),
     ...headers
   });
   response.end(JSON.stringify(body ?? {}));
 }
 
-function writeError(response, error) {
+function writeError(request, response, error) {
   if (error instanceof ApiError) {
-    writeJson(response, error.status, {
+    writeJson(request, response, error.status, {
       error: {
         code: error.code,
         message: error.message,
@@ -337,12 +312,61 @@ function writeError(response, error) {
     });
     return;
   }
-  writeJson(response, 500, {
+  writeJson(request, response, 500, {
     error: {
       code: "INTERNAL_SERVER_ERROR",
       message: "服务器内部错误"
     }
   });
+}
+
+function writePreflight(request, response) {
+  const headers = corsHeaders(request);
+  if (request.headers.origin && !headers["access-control-allow-origin"]) {
+    writeJson(request, response, 403, {
+      error: {
+        code: "CORS_ORIGIN_FORBIDDEN",
+        message: "当前前端来源未被允许访问 API"
+      }
+    });
+    return;
+  }
+
+  response.writeHead(204, headers);
+  response.end();
+}
+
+function corsHeaders(request) {
+  const origin = request.headers.origin;
+  const allowedOrigins = getAllowedOrigins();
+  const headers = {
+    vary: "Origin",
+    "access-control-allow-methods": CORS_METHODS,
+    "access-control-allow-headers": CORS_HEADERS,
+    "access-control-max-age": "600"
+  };
+
+  if (origin && allowedOrigins.has(origin)) {
+    headers["access-control-allow-origin"] = origin;
+    headers["access-control-allow-credentials"] = "true";
+  }
+
+  return headers;
+}
+
+function getAllowedOrigins() {
+  const rawOrigins = [
+    process.env.CLIENT_ORIGIN,
+    process.env.ADMIN_ORIGIN,
+    process.env.CORS_ORIGINS
+  ].filter(Boolean);
+
+  return new Set(
+    rawOrigins
+      .flatMap((value) => value.split(","))
+      .map((value) => value.trim())
+      .filter(Boolean)
+  );
 }
 
 function requestMetadata(request) {
