@@ -180,9 +180,6 @@ Required request fields:
 - `acceptedBanks`
 - `capabilities`
 - `cooperationModes`
-- `licenseDocumentIds`
-- `legalRepresentativeIdDocumentIds`
-- `qualificationDocumentIds`
 - `complianceAccepted`
 
 Optional fields:
@@ -190,6 +187,9 @@ Optional fields:
 - `minInstallmentMonths`
 - `maxInstallmentMonths`
 - `averageProcessingDays`
+- `licenseDocumentIds`
+- `legalRepresentativeIdDocumentIds`
+- `qualificationDocumentIds`
 
 Response:
 

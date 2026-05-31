@@ -88,9 +88,9 @@ export function validatePartnerApplication(input) {
   requireNonEmptyStringArray(input.acceptedBanks, "acceptedBanks", fields);
   requireEnumArray(input.capabilities, "capabilities", PUBLIC_CONFIG.expectedSolutions, fields);
   requireNonEmptyStringArray(input.cooperationModes, "cooperationModes", fields);
-  requireNonEmptyStringArray(input.licenseDocumentIds, "licenseDocumentIds", fields);
-  requireNonEmptyStringArray(input.legalRepresentativeIdDocumentIds, "legalRepresentativeIdDocumentIds", fields);
-  requireNonEmptyStringArray(input.qualificationDocumentIds, "qualificationDocumentIds", fields);
+  optionalStringArray(input.licenseDocumentIds, "licenseDocumentIds", fields);
+  optionalStringArray(input.legalRepresentativeIdDocumentIds, "legalRepresentativeIdDocumentIds", fields);
+  optionalStringArray(input.qualificationDocumentIds, "qualificationDocumentIds", fields);
   requireAccepted(input.complianceAccepted, "complianceAccepted", fields);
   optionalPositiveInteger(input.minInstallmentMonths, "minInstallmentMonths", fields);
   optionalPositiveInteger(input.maxInstallmentMonths, "maxInstallmentMonths", fields);
@@ -178,6 +178,12 @@ function requireEnumArray(value, name, allowed, fields) {
 function requireNonEmptyStringArray(value, name, fields) {
   if (!isStringArray(value) || value.length === 0 || value.some((item) => !isNonBlankString(item))) {
     fields[name] = "必须至少填写一项";
+  }
+}
+
+function optionalStringArray(value, name, fields) {
+  if (value !== undefined && value !== null && (!isStringArray(value) || value.some((item) => !isNonBlankString(item)))) {
+    fields[name] = "附件引用必须是非空字符串数组";
   }
 }
 
