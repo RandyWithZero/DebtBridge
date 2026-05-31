@@ -100,8 +100,8 @@ function bindShell() {
 
 function navigate(path) {
   history.pushState({}, "", path);
-  window.scrollTo(0, 0);
   $(".top-nav").classList.remove("open");
+  $(".mobile-menu").setAttribute("aria-expanded", "false");
   render();
 }
 
@@ -119,7 +119,7 @@ async function render() {
   const app = $("#app");
   app.innerHTML = routes[route]?.() || routes["/"]();
   bindRoute(route);
-  window.scrollTo(0, 0);
+  scrollToHashTarget();
   app.focus({ preventScroll: true });
 }
 
@@ -145,7 +145,6 @@ function renderHome() {
   return `
     <section class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">DebtBridge 客户与机构端</p>
         <h1>信用卡逾期协商信息撮合</h1>
         <p class="hero-text">帮助持卡人与合规机构对接，探索个性化分期、罚息减免等依法协商方案。</p>
         <div class="compliance-strip"><span>不放贷</span><span>不催收</span><span>不代收款</span><span>不承诺结果</span></div>
@@ -173,13 +172,6 @@ function renderHome() {
         <li>不承诺 100% 成功，协商结果以银行或持牌机构审核为准。</li>
         <li>机构必须提交资质并通过人工审核。</li>
       </ul>
-    </section>
-    <section class="section final-routing">
-      <div><p class="eyebrow">选择入口</p><h2>按真实身份进入对应工作区</h2></div>
-      <div class="route-cards">
-        <a class="route-card" href="/debtor/login" data-link><strong>我是持卡人</strong><span>提交申请、查看状态、补充资料</span></a>
-        <a class="route-card" href="/partner/login" data-link><strong>我是合作机构</strong><span>提交入驻、补充资质、查看授权案件</span></a>
-      </div>
     </section>`;
 }
 
@@ -203,7 +195,7 @@ function renderService() {
 
 function renderPublicBands() {
   return `
-    <section class="section">
+    <section class="section" id="audience">
       <div class="section-heading"><p class="eyebrow">适合人群</p><h2>面向主动、合规处理信用卡逾期的持卡人</h2></div>
       <div class="card-grid four">
         <article class="info-card">信用卡逾期且暂时无法全额还款</article>
@@ -212,7 +204,7 @@ function renderPublicBands() {
         <article class="info-card">担心诉讼风险并需要梳理还款方案</article>
       </div>
     </section>
-    <section class="section flow-section">
+    <section class="section flow-section" id="flow">
       <div class="section-heading"><p class="eyebrow">服务流程</p><h2>从需求登记到协议留档，全程人工确认</h2></div>
       <div class="flow"><span>提交信息</span><span>平台人工初审</span><span>匹配合规机构</span><span>机构沟通方案</span><span>进度跟踪与协议留档</span></div>
     </section>`;
@@ -420,7 +412,7 @@ function partnerFormFields() {
       <label>最低可接受分期期数<input name="minInstallmentMonths" type="number" min="1" required /></label>
       <label>最高可接受分期期数<input name="maxInstallmentMonths" type="number" min="1" required /></label>
       <label>单案处理周期（天）<input name="averageProcessingDays" type="number" min="1" required /></label>
-      <label>合作模式<input name="cooperationModes" placeholder="success_fee, membership" required /></label>
+      <label>合作模式<input name="cooperationModes" placeholder="成功服务费、会员制" required /></label>
     </fieldset>
     <fieldset class="commitments"><legend>合规承诺</legend>
       <label><input type="checkbox" name="complianceAccepted" /> 机构承诺不暴力催收、不虚假承诺、不私下收取不透明费用，且材料真实有效。</label>
@@ -557,7 +549,7 @@ async function submitPartnerForm(event) {
     ...(!/^1[3-9]\d{9}$/.test(payload.contactPhone) ? { contactPhone: "联系人手机号格式不正确" } : {}),
     ...(payload.serviceCities.length ? {} : { serviceCities: "请填写业务城市" }),
     ...(payload.acceptedBanks.length ? {} : { acceptedBanks: "请填写可承接银行" }),
-    ...(payload.capabilities.length ? {} : { capabilities: "请至少选择一种能力" }),
+    ...(payload.capabilities.length ? {} : { capabilities: "请至少选择一种可做方案" }),
     ...accepted(payload, ["complianceAccepted"])
   };
   ["licenseDocument", "legalRepresentativeIdDocument", "qualificationDocument"].forEach((name) => {
@@ -666,7 +658,8 @@ function radio(name, title) {
 }
 
 function checkboxes(name, title, values) {
-  return `<div class="choice-stack" data-checkboxes="${name}">${title}<div class="options">${values.map((value) => `<label class="option-label"><input type="checkbox" name="${name}" value="${escapeAttr(value)}" /> ${escapeHtml(labels[name]?.[value] || value)}</label>`).join("")}</div></div>`;
+  const labelMap = labels[name] || (name === "capabilities" ? labels.expectedSolutions : {});
+  return `<div class="choice-stack" data-checkboxes="${name}">${title}<div class="options">${values.map((value) => `<label class="option-label"><input type="checkbox" name="${name}" value="${escapeAttr(value)}" /> ${escapeHtml(labelMap[value] || value)}</label>`).join("")}</div></div>`;
 }
 
 async function uploadDocument(filename, purpose) {
@@ -706,9 +699,22 @@ function facts(rows) {
 
 function setActiveNav(route) {
   $$(".top-nav a").forEach((link) => {
-    const href = link.getAttribute("href");
-    link.classList.toggle("active", route === href || (href !== "/" && route.startsWith(href.split("/")[1] ? `/${href.split("/")[1]}` : href)));
+    const target = new URL(link.getAttribute("href"), location.origin);
+    link.classList.toggle("active", route === target.pathname && location.hash === target.hash);
   });
+}
+
+function scrollToHashTarget() {
+  if (!location.hash) {
+    window.scrollTo(0, 0);
+    return;
+  }
+  const target = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+  if (target) {
+    target.scrollIntoView({ block: "start" });
+    return;
+  }
+  window.scrollTo(0, 0);
 }
 
 function required(payload, names) {

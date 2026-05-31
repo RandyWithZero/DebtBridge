@@ -322,6 +322,7 @@ h3 {
 
 .section {
   padding: 72px max(56px, calc((100vw - var(--content-max)) / 2));
+  scroll-margin-top: 72px;
 }
 
 .section-heading {
@@ -561,18 +562,6 @@ h3 {
   color: var(--primary);
   font-size: 13px;
   font-weight: 500;
-}
-
-.final-routing {
-  display: grid;
-  grid-template-columns: 0.8fr 1.2fr;
-  gap: 32px;
-  align-items: start;
-}
-
-.route-card {
-  border-color: var(--border);
-  background: var(--primary-dark);
 }
 
 .dashboard-grid {
@@ -925,8 +914,7 @@ th {
   .hero,
   .auth-page,
   .form-layout,
-  .compliance-panel,
-  .final-routing {
+  .compliance-panel {
     grid-template-columns: 1fr;
   }
 

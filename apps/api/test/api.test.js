@@ -217,6 +217,11 @@ describe("DebtBridge MVP API", () => {
         [debtorApplication.body.id]
       );
 
+      const adminDebtorList = await client.get("/api/admin/debtor-applications", managerToken);
+      assert.equal(adminDebtorList.status, 200);
+      const adminDebtorItem = adminDebtorList.body.items.find((item) => item.id === debtorApplication.body.id);
+      assert.deepEqual(adminDebtorItem.expectedSolutions, debtorPayload().expectedSolutions);
+
       const partnerOrg = await createActivePartner(client, managerToken, partnerToken);
       const qualified = await qualifyApplication(client, managerToken, debtorApplication.body.id);
 

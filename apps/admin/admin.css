@@ -246,16 +246,42 @@ textarea:focus {
   color: var(--green);
 }
 
+.page-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.page-error .btn {
+  min-height: 32px;
+  padding: 5px 10px;
+}
+
+.inline-error {
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(180, 35, 24, 0.1);
+  color: var(--red);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+}
+
 .shell {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
+  background: var(--steel);
 }
 
 .sidebar {
-  position: sticky;
-  top: 0;
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 248px;
   height: 100vh;
+  overflow-y: auto;
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 24px;
@@ -307,6 +333,7 @@ textarea:focus {
 
 .workspace {
   min-width: 0;
+  grid-column: 2;
   padding: 24px;
   background: var(--steel);
 }
@@ -583,7 +610,12 @@ th {
 
   .sidebar {
     position: static;
+    width: auto;
     height: auto;
+  }
+
+  .workspace {
+    grid-column: auto;
   }
 }
 
