@@ -4,9 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "node apps/api/src/server.js",
     "start": "node apps/api/src/server.js",
     "start:api": "node apps/api/src/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "db:migrate": "psql \"${DATABASE_URL:-postgres://debtbridge:debtbridge_dev_password@localhost:5432/debtbridge}\" -v ON_ERROR_STOP=1 -f db/migrations/0001_debtbridge_mvp.sql",
+    "db:seed": "psql \"${DATABASE_URL:-postgres://debtbridge:debtbridge_dev_password@localhost:5432/debtbridge}\" -v ON_ERROR_STOP=1 -f db/seeds/001_local_admin_users.sql",
+    "db:migrate:compose": "docker compose exec -T postgres sh -c 'psql -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\" -v ON_ERROR_STOP=1 -f -' < db/migrations/0001_debtbridge_mvp.sql",
+    "db:seed:compose": "docker compose exec -T postgres sh -c 'psql -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\" -v ON_ERROR_STOP=1 -f -' < db/seeds/001_local_admin_users.sql"
   },
   "engines": {
     "node": ">=24"
