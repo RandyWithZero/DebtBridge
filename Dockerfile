@@ -6,7 +6,9 @@ WORKDIR /app
 RUN groupadd --system --gid 1001 debtbridge \
   && useradd --system --uid 1001 --gid debtbridge --home /app debtbridge
 
-COPY --chown=debtbridge:debtbridge package.json ./
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
 COPY --chown=debtbridge:debtbridge apps ./apps
 COPY --chown=debtbridge:debtbridge db ./db
 
