@@ -44,6 +44,8 @@ const navItems = [
   ["audit", "/admin/audit-logs", "审计记录"]
 ];
 
+const API_BASE = localStorage.getItem("debtbridgeApiBase") || "http://localhost:3000";
+
 const state = {
   token: localStorage.getItem("debtbridgeAdminToken") || "",
   user: null,
@@ -471,7 +473,7 @@ async function api(path, options = {}) {
 }
 
 async function rawApi(path, options = {}) {
-  const response = await fetch(path, {
+  const response = await fetch(`${API_BASE}${path}`, {
     method: options.method || "GET",
     headers: {
       "content-type": "application/json",

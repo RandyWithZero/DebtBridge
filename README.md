@@ -1,6 +1,10 @@
 # DebtBridge
 
-DebtBridge MVP is a credit-card overdue negotiation matching platform. The current backend implementation is a dependency-light Node.js API that covers public intake, partner onboarding, admin review, manual matching, progress tracking, document metadata binding, and audit logs.
+DebtBridge MVP is a credit-card overdue negotiation matching platform. The current implementation is split into two independent browser frontends and one API-only Node.js backend.
+
+- Client frontend: debtor and partner login, application, profile, and case views.
+- Admin frontend: platform operations, review, matching, progress, and audit views.
+- Backend API: authentication, authorization, PostgreSQL-backed business APIs, health, and config only. It does not serve product pages.
 
 ## Frontend boundaries
 
@@ -55,7 +59,7 @@ npm run db:seed:compose
 Run the local API service:
 
 ```bash
-npm start
+npm run start:client
 ```
 
 Open `http://localhost:3000/` for a JSON service descriptor, or `http://localhost:3000/api/health` for health checks. The backend does not serve the client product UI or admin UI; those are separate frontend apps that call this API.
@@ -63,22 +67,20 @@ Open `http://localhost:3000/` for a JSON service descriptor, or `http://localhos
 For admin API-only local verification, the same server can be started with the explicit alias:
 
 ```bash
-npm run dev:admin
+npm run test:frontends
 ```
 
-Run the client frontend in another terminal:
-
-```bash
-npm run dev:client
-```
-
-Open `http://localhost:5173` for the client site, debtor login, debtor application, partner login, and partner onboarding. The API remains available at `http://localhost:3000/api/*`.
-
-Run the app and PostgreSQL together with Docker Compose:
+Run PostgreSQL, the API, the client frontend, and the admin frontend together with Docker Compose:
 
 ```bash
 docker compose up --build
 ```
+
+Compose exposes:
+
+- API: `http://localhost:3000`
+- Client frontend: `http://localhost:3001`
+- Admin frontend: `http://localhost:3002`
 
 Default admin users for local MVP verification:
 
@@ -176,6 +178,7 @@ Known frontend contract gaps for GOO-19/GOO-20:
 Pull requests run `.github/workflows/ci.yml`, which verifies:
 
 - Node.js API tests with `npm test`.
+- Frontend entrypoint syntax checks with `npm run test:frontends`.
 - PostgreSQL migration and seed scripts against a real Postgres 16 service.
 - `docker compose config`.
 - Application container image build.
