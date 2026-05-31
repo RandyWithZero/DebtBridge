@@ -103,8 +103,8 @@ function bindShell() {
 
 function navigate(path) {
   history.pushState({}, "", path);
-  window.scrollTo(0, 0);
   $(".top-nav").classList.remove("open");
+  $(".mobile-menu").setAttribute("aria-expanded", "false");
   render();
 }
 
@@ -122,7 +122,7 @@ async function render() {
   const app = $("#app");
   app.innerHTML = routes[route]?.() || routes["/"]();
   bindRoute(route);
-  window.scrollTo(0, 0);
+  scrollToHashTarget();
   app.focus({ preventScroll: true });
 }
 
@@ -198,7 +198,7 @@ function renderService() {
 
 function renderPublicBands() {
   return `
-    <section class="section">
+    <section class="section" id="audience">
       <div class="section-heading"><p class="eyebrow">适合人群</p><h2>面向主动、合规处理信用卡逾期的持卡人</h2></div>
       <div class="card-grid four">
         <article class="info-card">信用卡逾期且暂时无法全额还款</article>
@@ -207,7 +207,7 @@ function renderPublicBands() {
         <article class="info-card">担心诉讼风险并需要梳理还款方案</article>
       </div>
     </section>
-    <section class="section flow-section">
+    <section class="section flow-section" id="flow">
       <div class="section-heading"><p class="eyebrow">服务流程</p><h2>从需求登记到协议留档，全程人工确认</h2></div>
       <div class="flow"><span>提交信息</span><span>平台人工初审</span><span>匹配合规机构</span><span>机构沟通方案</span><span>进度跟踪与协议留档</span></div>
     </section>`;
@@ -702,9 +702,22 @@ function facts(rows) {
 
 function setActiveNav(route) {
   $$(".top-nav a").forEach((link) => {
-    const href = link.getAttribute("href");
-    link.classList.toggle("active", route === href || (href !== "/" && route.startsWith(href.split("/")[1] ? `/${href.split("/")[1]}` : href)));
+    const target = new URL(link.getAttribute("href"), location.origin);
+    link.classList.toggle("active", route === target.pathname && location.hash === target.hash);
   });
+}
+
+function scrollToHashTarget() {
+  if (!location.hash) {
+    window.scrollTo(0, 0);
+    return;
+  }
+  const target = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+  if (target) {
+    target.scrollIntoView({ block: "start" });
+    return;
+  }
+  window.scrollTo(0, 0);
 }
 
 function required(payload, names) {
