@@ -1,6 +1,33 @@
 # DebtBridge MVP 数据模型与迁移设计
 
-本文定义 DebtBridge MVP 的 PostgreSQL 数据模型、索引、约束和隐私边界。当前仓库尚未包含 Prisma schema 或迁移框架，因此本文件作为后端落地 `prisma/schema.prisma` 和首个数据库迁移的实施依据。
+本文定义 DebtBridge MVP 的 PostgreSQL 数据模型、索引、约束和隐私边界。仓库已包含 `prisma/schema.prisma` 与首个 SQL 迁移，本文作为后端接入 Prisma repository、维护状态机和扩展后续迁移的设计依据。
+
+## 0. 落地文件与命令
+
+当前落地选择 Prisma，原因是后端处于 Node.js 生态，后续可以通过 Prisma Client 获得类型化模型、事务 API 和可重复迁移；首个迁移仍保留手写 SQL，以覆盖 Prisma schema 难以完整表达的 PostgreSQL 能力：CHECK 约束、GIN 索引、partial unique index 和 `updated_at` trigger。
+
+落地文件：
+
+- `prisma/schema.prisma`：业务模型、枚举、外键和普通索引。
+- `prisma/migrations/20260531000000_initial_postgresql_model/migration.sql`：初始化 PostgreSQL DDL、完整约束、GIN/partial 索引和触发器。
+- `prisma.config.ts`：Prisma 读取 `DATABASE_URL` 的配置。
+- `.env.example`：本地 PostgreSQL 连接串模板。
+
+本地初始化：
+
+```bash
+npm install
+cp .env.example .env
+createdb debtbridge
+npm run db:migrate
+```
+
+验证：
+
+```bash
+npm run db:validate
+npm test
+```
 
 ## 1. 设计原则
 
@@ -209,7 +236,41 @@
 - 机构主体名称可在审核通过后对欠款人展示。
 - 法定代表人、证照文件、资质详情只允许后台可见，不向公开端或未授权机构开放。
 
-### 3.4 `match_cases`
+### 3.4 `partner_contacts`
+
+机构联系人和未来机构账号表。MVP 当前不开放机构自助后台，但数据库预留账号字段，避免把多个联系人和登录能力塞进机构主表。
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | uuid | PK | 联系人 ID |
+| `partner_organization_id` | uuid | FK partner_organizations(id), NOT NULL | 所属机构 |
+| `name` | text | NOT NULL | 联系人姓名 |
+| `phone` | text | NOT NULL | 联系手机号 |
+| `phone_normalized` | text | NOT NULL | 规范化手机号 |
+| `email` | text | NULL | 未来机构账号邮箱；保存小写规范化值 |
+| `password_hash` | text | NULL | 未来机构登录哈希；未启用账号时为空 |
+| `role` | text | NOT NULL DEFAULT `contact` | `owner`, `contact`, `viewer` |
+| `status` | text | NOT NULL DEFAULT `active` | `invited`, `active`, `disabled` |
+| `is_primary` | boolean | NOT NULL DEFAULT false | 是否主联系人 |
+| `last_login_at` | timestamptz | NULL | 未来机构后台最近登录 |
+| `created_at` | timestamptz | NOT NULL DEFAULT now() | 创建时间 |
+| `updated_at` | timestamptz | NOT NULL DEFAULT now() | 更新时间 |
+
+索引与约束：
+
+- `INDEX partner_contacts_org_status_idx (partner_organization_id, status)`
+- `INDEX partner_contacts_phone_idx (phone_normalized)`
+- `UNIQUE (partner_organization_id, email) WHERE email IS NOT NULL`
+- `UNIQUE (partner_organization_id) WHERE is_primary = true`
+- `CHECK (role IN ('owner', 'contact', 'viewer'))`
+- `CHECK (status IN ('invited', 'active', 'disabled'))`
+
+敏感性：
+
+- `password_hash` 只允许认证模块写入，禁止出现在 API 响应和审计 `after` 明细中。
+- 当前机构主表仍保留提交时的联系人快照；后端接入数据库时可在同一事务中创建一条 `is_primary=true` 的 `partner_contacts`。
+
+### 3.5 `match_cases`
 
 人工匹配案件表，连接一条已通过初筛的申请和一个已激活机构。
 
@@ -252,7 +313,7 @@
 - `match_reason`、`proposed_plan` 可能包含金融和服务判断，仅后台可见。
 - 未来开放机构后台时，机构只能看到本机构案件及授权范围内字段。
 
-### 3.5 `match_case_notes`
+### 3.6 `match_case_notes`
 
 案件跟进备注。MVP 仅内部可见。
 
@@ -274,7 +335,7 @@
 
 - 后端应过滤或提醒不要在备注中记录银行卡密码、验证码、完整卡号、与服务无关的病历细节等高风险信息。
 
-### 3.6 `documents`
+### 3.7 `documents`
 
 文件元数据表。对象存储或本地卷中的真实文件由 `storage_key` 引用，下载必须经过后端鉴权。
 
@@ -329,7 +390,7 @@
 - `storage_key` 是受控路径，禁止在公开 API 返回。
 - 身份证、医疗、收入、诉讼材料等属于高度敏感材料，应在文件服务层加水印、清理 EXIF，并记录查看/下载审计。
 
-### 3.7 `audit_logs`
+### 3.8 `audit_logs`
 
 审计日志表。用于追踪后台审核、状态变更、匹配、文件查看/下载和账号管理。
 
@@ -369,6 +430,7 @@ admin_users 1 -> N partner_organizations.reviewed_by
 admin_users 1 -> N match_cases.created_by
 admin_users 1 -> N match_case_notes.author
 
+partner_organizations 1 -> N partner_contacts
 debtor_applications 1 -> N documents(owner_type='debtor_application')
 partner_organizations 1 -> N documents(owner_type='partner_organization')
 match_cases 1 -> N documents(owner_type='match_case')
@@ -424,11 +486,12 @@ match_cases 1 -> N match_case_notes
 1. 创建枚举或 CHECK 约束辅助类型。
 2. 创建 `admin_users`。
 3. 创建 `debtor_applications` 和 `partner_organizations`。
-4. 创建 `match_cases` 和 `match_case_notes`。
-5. 创建 `documents`。
-6. 创建 `audit_logs`。
-7. 添加索引、唯一约束和 partial unique index。
-8. 添加 `updated_at` 自动维护策略。Prisma 可用 `@updatedAt`；纯 SQL 可用 trigger。
+4. 创建 `partner_contacts`。
+5. 创建 `match_cases` 和 `match_case_notes`。
+6. 创建 `documents`。
+7. 创建 `audit_logs`。
+8. 添加索引、唯一约束和 partial unique index。
+9. 添加 `updated_at` 自动维护策略。Prisma 可用 `@updatedAt`；纯 SQL 可用 trigger。
 
 首个迁移不涉及历史数据回填，数据丢失风险为无。后续若修改状态枚举或拆分字段，应先做兼容字段、双写、回填、读路径切换，再删除旧字段。
 
@@ -444,6 +507,7 @@ match_cases 1 -> N match_case_notes
 ### 7.2 创建机构入驻
 
 - 在一个事务中创建 `partner_organizations`，绑定营业执照、法人身份证、资质文件。
+- 同一事务中创建一条 `partner_contacts(is_primary=true)`，后续机构后台开放时再补齐 `email`、`password_hash` 和邀请状态。
 - 校验统一社会信用代码唯一；重复时返回可人工处理的错误，不暴露既有记录详情。
 - 未审核前不创建机构后台账号。
 

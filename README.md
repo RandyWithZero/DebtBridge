@@ -10,6 +10,10 @@ Run tests:
 npm test
 ```
 
+Validate the Prisma schema:
+
+```bash
+npm run db:validate
 Prepare local environment variables:
 
 ```bash
@@ -70,6 +74,43 @@ Implemented endpoint groups:
 - Case follow-up: `POST /api/admin/match-cases/:id/notes`, `POST /api/admin/match-cases/:id/documents`
 - Audit: `GET /api/admin/audit-logs`
 
+The runtime MVP still stores data in memory while the API contract is being stabilized. PostgreSQL persistence is now modeled under `prisma/` so the backend can switch from the in-memory repository to Prisma without changing the public workflow shape.
+
+## PostgreSQL schema and migrations
+
+DebtBridge uses Prisma for the PostgreSQL schema because the planned backend is Node.js/TypeScript-oriented and the project needs typed models plus repeatable migrations. The initial migration also contains hand-written PostgreSQL DDL for check constraints, GIN indexes, partial unique indexes, and `updated_at` triggers that are important for data integrity and query performance.
+
+Configure a local database:
+
+```bash
+cp .env.example .env
+# Edit DATABASE_URL if your local user, password, host, port, or database name differs.
+```
+
+Install dependencies and initialize an empty PostgreSQL database:
+
+```bash
+npm install
+createdb debtbridge
+npm run db:migrate
+```
+
+For non-interactive deploys, run:
+
+```bash
+npm run db:deploy
+```
+
+The initial model covers:
+
+- `admin_users` for platform operator and manager accounts.
+- `debtor_applications` for debtor intake, repayment capacity, hardship tags, consent timestamps, review status, and search fields.
+- `partner_organizations` and `partner_contacts` for onboarding, qualification scope, service cities, banks, capabilities, contact people, and future institution account login.
+- `match_cases` and `match_case_notes` for manual matching, proposed plans, progress tracking, and internal follow-up.
+- `documents` for controlled file references only. Business tables do not store uploaded file binaries or public storage URLs.
+- `audit_logs` for review, status transition, matching, file, and account-management traceability.
+
+Backend integration should use transactions for application submission plus document binding, partner onboarding plus document binding, match creation plus application status update, and every review or case transition plus audit-log insert.
 The MVP stores data in memory. Document upload endpoints create controlled metadata records and bind references to business entities; they do not persist binary file contents yet. This keeps the API contract and workflow testable while leaving PostgreSQL, Prisma migrations, object storage, and production password hashing as the next infrastructure step.
 
 ## CI and local infrastructure
