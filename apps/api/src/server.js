@@ -13,6 +13,7 @@ import { createStore } from "./store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_ROOT = path.resolve(__dirname, "../../web");
+const ADMIN_WEB_ROOT = path.resolve(__dirname, "../../admin");
 
 export function createApp() {
   const persistence =
@@ -55,15 +56,21 @@ export function createApp() {
 async function serveStatic(request, response, url) {
   if (request.method !== "GET" && request.method !== "HEAD") return false;
   const pathname = decodeURIComponent(url.pathname);
-  const relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
-  const requestedPath = path.resolve(WEB_ROOT, relativePath);
-  const filePath = requestedPath.startsWith(WEB_ROOT) ? requestedPath : path.join(WEB_ROOT, "index.html");
-  try {
-    const fileStat = await stat(filePath);
-    if (!fileStat.isFile()) return streamFile(path.join(WEB_ROOT, "index.html"), response);
-    return streamFile(filePath, response);
-  } catch {
-    return streamFile(path.join(WEB_ROOT, "index.html"), response);
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+    return serveStaticFromRoot(ADMIN_WEB_ROOT, pathname.replace(/^\/admin\/?/, ""));
+  }
+  return serveStaticFromRoot(WEB_ROOT, pathname === "/" ? "index.html" : pathname.slice(1));
+
+  async function serveStaticFromRoot(root, relativePath) {
+    const requestedPath = path.resolve(root, relativePath || "index.html");
+    const filePath = requestedPath.startsWith(root) ? requestedPath : path.join(root, "index.html");
+    try {
+      const fileStat = await stat(filePath);
+      if (!fileStat.isFile()) return streamFile(path.join(root, "index.html"), response);
+      return streamFile(filePath, response);
+    } catch {
+      return streamFile(path.join(root, "index.html"), response);
+    }
   }
 }
 
@@ -111,6 +118,9 @@ const routes = [
   route("POST", "/api/admin/auth/login", null, loginRoute(["manager", "operator"])),
   route("GET", "/api/admin/auth/me", ["manager", "operator"], ({ actor }) => ({ body: { user: publicUser(actor) } })),
   route("POST", "/api/admin/auth/logout", ["manager", "operator"], logoutRoute()),
+  route("GET", "/api/admin/users", ["manager"], ({ url, repository }) => ({
+    body: repository.listAdminUsers(Object.fromEntries(url.searchParams))
+  })),
   route("POST", "/api/debtor/me/applications", ["debtor"], ({ body, request, actor, service }) => ({
     status: 201,
     body: service.createDebtorApplication(body, requestMetadata(request), actor)
