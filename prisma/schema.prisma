@@ -1,0 +1,317 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AdminRole {
+  operator
+  manager
+
+  @@map("admin_role")
+}
+
+enum DebtorApplicationStatus {
+  submitted
+  under_review
+  need_more_info
+  qualified
+  matched
+  rejected
+  withdrawn
+  archived
+
+  @@map("debtor_application_status")
+}
+
+enum PartnerOrganizationStatus {
+  pending_review
+  under_review
+  need_more_info
+  active
+  suspended
+  rejected
+
+  @@map("partner_organization_status")
+}
+
+enum MatchCaseStatus {
+  matched
+  contacted
+  negotiating
+  agreement_pending
+  agreement_signed
+  in_repayment
+  success
+  failed
+  cancelled
+  archived
+
+  @@map("match_case_status")
+}
+
+enum DocumentPurpose {
+  debtor_supporting_material
+  partner_business_license
+  partner_legal_representative_id
+  partner_qualification
+  agreement
+  admin_supplement
+
+  @@map("document_purpose")
+}
+
+enum DocumentStatus {
+  uploaded
+  bound
+  quarantined
+  deleted
+
+  @@map("document_status")
+}
+
+enum DocumentAccessScope {
+  admin_only
+  assigned_partner
+  debtor_visible
+
+  @@map("document_access_scope")
+}
+
+enum DocumentOwnerType {
+  debtor_application
+  partner_organization
+  match_case
+  unbound
+
+  @@map("document_owner_type")
+}
+
+enum NoteVisibility {
+  internal
+
+  @@map("note_visibility")
+}
+
+enum AuditEntityType {
+  debtor_application
+  partner_organization
+  match_case
+  document
+  admin_user
+
+  @@map("audit_entity_type")
+}
+
+model AdminUser {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String    @unique @db.Text
+  passwordHash String    @map("password_hash") @db.Text
+  role         AdminRole
+  displayName  String    @map("display_name") @db.Text
+  status       String    @default("active") @db.Text
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  reviewedDebtorApplications DebtorApplication[]    @relation("DebtorApplicationReviewer")
+  reviewedPartnerOrganizations PartnerOrganization[] @relation("PartnerOrganizationReviewer")
+  createdMatchCases          MatchCase[]             @relation("MatchCaseCreator")
+  transitionedMatchCases     MatchCase[]             @relation("MatchCaseTransitioner")
+  matchCaseNotes             MatchCaseNote[]
+  uploadedDocuments          Document[]
+  auditLogs                  AuditLog[]
+
+  @@map("admin_users")
+}
+
+model DebtorApplication {
+  id                              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                            String                    @db.Text
+  phone                           String                    @db.Text
+  phoneNormalized                 String                    @map("phone_normalized") @db.Text
+  city                            String                    @db.Text
+  bankName                        String                    @map("bank_name") @db.Text
+  totalDebtAmountCents            BigInt                    @map("total_debt_amount_cents")
+  overdueRange                    String                    @map("overdue_range") @db.Text
+  isUnderCollection               Boolean                   @map("is_under_collection")
+  hasLegalNotice                  Boolean                   @map("has_legal_notice")
+  monthlyIncomeCents              BigInt                    @map("monthly_income_cents")
+  monthlyRepaymentCapacityCents   BigInt                    @map("monthly_repayment_capacity_cents")
+  repaymentCapacityNeedsReview    Boolean                   @default(false) @map("repayment_capacity_needs_review")
+  expectedSolutions               String[]                  @map("expected_solutions")
+  hardshipReasons                 String[]                  @map("hardship_reasons")
+  hardshipDescription             String?                   @map("hardship_description") @db.Text
+  status                          DebtorApplicationStatus   @default(submitted)
+  reviewReason                    String?                   @map("review_reason") @db.Text
+  reviewedById                    String?                   @map("reviewed_by_id") @db.Uuid
+  reviewedAt                      DateTime?                 @map("reviewed_at") @db.Timestamptz(6)
+  truthfulnessAcceptedAt          DateTime                  @map("truthfulness_accepted_at") @db.Timestamptz(6)
+  privacyAcceptedAt               DateTime                  @map("privacy_accepted_at") @db.Timestamptz(6)
+  serviceAgreementAcceptedAt      DateTime                  @map("service_agreement_accepted_at") @db.Timestamptz(6)
+  agreementVersion                String                    @map("agreement_version") @db.Text
+  consentIpHash                   String?                   @map("consent_ip_hash") @db.Text
+  consentUserAgent                String?                   @map("consent_user_agent") @db.Text
+  createdAt                       DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                       DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  archivedAt                      DateTime?                 @map("archived_at") @db.Timestamptz(6)
+
+  reviewedBy                      AdminUser?                @relation("DebtorApplicationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  matchCases                      MatchCase[]
+
+  @@index([status, createdAt(sort: Desc)], map: "debtor_applications_status_created_idx")
+  @@index([phoneNormalized, createdAt(sort: Desc)], map: "debtor_applications_phone_created_idx")
+  @@index([city, status], map: "debtor_applications_city_status_idx")
+  @@index([bankName, status], map: "debtor_applications_bank_status_idx")
+  @@map("debtor_applications")
+}
+
+model PartnerOrganization {
+  id                        String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationName          String                    @map("organization_name") @db.Text
+  unifiedSocialCreditCode   String                    @unique(map: "partner_organizations_unified_social_credit_code_key") @map("unified_social_credit_code") @db.Text
+  legalRepresentativeName   String                    @map("legal_representative_name") @db.Text
+  contactName               String                    @map("contact_name") @db.Text
+  contactPhone              String                    @map("contact_phone") @db.Text
+  contactPhoneNormalized    String                    @map("contact_phone_normalized") @db.Text
+  serviceCities             String[]                  @map("service_cities")
+  acceptedBanks             String[]                  @map("accepted_banks")
+  capabilities              String[]
+  minInstallmentMonths      Int?                      @map("min_installment_months")
+  maxInstallmentMonths      Int?                      @map("max_installment_months")
+  averageProcessingDays     Int?                      @map("average_processing_days")
+  cooperationModes          String[]                  @map("cooperation_modes")
+  status                    PartnerOrganizationStatus @default(pending_review)
+  reviewReason              String?                   @map("review_reason") @db.Text
+  reviewedById              String?                   @map("reviewed_by_id") @db.Uuid
+  reviewedAt                DateTime?                 @map("reviewed_at") @db.Timestamptz(6)
+  complianceAcceptedAt      DateTime                  @map("compliance_accepted_at") @db.Timestamptz(6)
+  agreementVersion          String                    @map("agreement_version") @db.Text
+  createdAt                 DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  suspendedAt               DateTime?                 @map("suspended_at") @db.Timestamptz(6)
+
+  reviewedBy                AdminUser?                @relation("PartnerOrganizationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  matchCases                MatchCase[]
+  contacts                  PartnerContact[]
+
+  @@index([status, createdAt(sort: Desc)], map: "partner_orgs_status_created_idx")
+  @@index([contactPhoneNormalized], map: "partner_orgs_contact_phone_idx")
+  @@map("partner_organizations")
+}
+
+model PartnerContact {
+  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  partnerOrganizationId String              @map("partner_organization_id") @db.Uuid
+  name                  String              @db.Text
+  phone                 String              @db.Text
+  phoneNormalized       String              @map("phone_normalized") @db.Text
+  email                 String?             @db.Text
+  passwordHash          String?             @map("password_hash") @db.Text
+  role                  String              @default("contact") @db.Text
+  status                String              @default("active") @db.Text
+  isPrimary             Boolean             @default(false) @map("is_primary")
+  lastLoginAt           DateTime?           @map("last_login_at") @db.Timestamptz(6)
+  createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  partnerOrganization   PartnerOrganization @relation(fields: [partnerOrganizationId], references: [id], onDelete: Cascade)
+
+  @@index([partnerOrganizationId, status], map: "partner_contacts_org_status_idx")
+  @@index([phoneNormalized], map: "partner_contacts_phone_idx")
+  @@map("partner_contacts")
+}
+
+model MatchCase {
+  id                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  debtorApplicationId      String              @map("debtor_application_id") @db.Uuid
+  partnerOrganizationId    String              @map("partner_organization_id") @db.Uuid
+  status                   MatchCaseStatus     @default(matched)
+  matchReason              String              @map("match_reason") @db.Text
+  proposedPlan             Json                @default("{}") @map("proposed_plan")
+  failureReason            String?             @map("failure_reason") @db.Text
+  createdById              String              @map("created_by_id") @db.Uuid
+  lastTransitionById       String?             @map("last_transition_by_id") @db.Uuid
+  lastTransitionReason     String?             @map("last_transition_reason") @db.Text
+  lastTransitionAt         DateTime?           @map("last_transition_at") @db.Timestamptz(6)
+  createdAt                DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  archivedAt               DateTime?           @map("archived_at") @db.Timestamptz(6)
+
+  debtorApplication        DebtorApplication   @relation(fields: [debtorApplicationId], references: [id], onDelete: Restrict)
+  partnerOrganization      PartnerOrganization @relation(fields: [partnerOrganizationId], references: [id], onDelete: Restrict)
+  createdBy                AdminUser           @relation("MatchCaseCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  lastTransitionBy         AdminUser?          @relation("MatchCaseTransitioner", fields: [lastTransitionById], references: [id], onDelete: SetNull)
+  notes                    MatchCaseNote[]
+
+  @@index([status, createdAt(sort: Desc)], map: "match_cases_status_created_idx")
+  @@index([debtorApplicationId], map: "match_cases_application_idx")
+  @@index([partnerOrganizationId, status], map: "match_cases_partner_status_idx")
+  @@map("match_cases")
+}
+
+model MatchCaseNote {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matchCaseId String         @map("match_case_id") @db.Uuid
+  authorId    String         @map("author_id") @db.Uuid
+  content     String         @db.Text
+  visibility  NoteVisibility @default(internal)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  matchCase   MatchCase      @relation(fields: [matchCaseId], references: [id], onDelete: Cascade)
+  author      AdminUser      @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([matchCaseId, createdAt(sort: Desc)], map: "match_case_notes_case_created_idx")
+  @@map("match_case_notes")
+}
+
+model Document {
+  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerType             DocumentOwnerType   @default(unbound) @map("owner_type")
+  ownerId               String?             @map("owner_id") @db.Uuid
+  purpose               DocumentPurpose
+  status                DocumentStatus      @default(uploaded)
+  accessScope           DocumentAccessScope @default(admin_only) @map("access_scope")
+  originalFilename      String              @map("original_filename") @db.Text
+  storageKey            String              @unique @map("storage_key") @db.Text
+  mimeType              String              @map("mime_type") @db.Text
+  sizeBytes             BigInt              @map("size_bytes")
+  sha256Hash            String              @map("sha256_hash") @db.Text
+  uploadedByAdminId     String?             @map("uploaded_by_admin_id") @db.Uuid
+  publicUploadTokenHash String?             @map("public_upload_token_hash") @db.Text
+  boundAt               DateTime?           @map("bound_at") @db.Timestamptz(6)
+  deletedAt             DateTime?           @map("deleted_at") @db.Timestamptz(6)
+  createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  uploadedByAdmin       AdminUser?          @relation(fields: [uploadedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([ownerType, ownerId, createdAt(sort: Desc)], map: "documents_owner_idx")
+  @@index([status, createdAt], map: "documents_status_created_idx")
+  @@index([sha256Hash], map: "documents_hash_idx")
+  @@map("documents")
+}
+
+model AuditLog {
+  id         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorId    String?         @map("actor_id") @db.Uuid
+  actorRole  AdminRole?      @map("actor_role")
+  action     String          @db.Text
+  entityType AuditEntityType @map("entity_type")
+  entityId   String          @map("entity_id") @db.Uuid
+  before     Json            @default("{}")
+  after      Json            @default("{}")
+  reason     String?         @db.Text
+  requestId  String?         @map("request_id") @db.Text
+  ipHash     String?         @map("ip_hash") @db.Text
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actor      AdminUser?      @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt(sort: Desc)], map: "audit_logs_entity_created_idx")
+  @@index([actorId, createdAt(sort: Desc)], map: "audit_logs_actor_created_idx")
+  @@index([action, createdAt(sort: Desc)], map: "audit_logs_action_created_idx")
+  @@map("audit_logs")
+}
