@@ -241,6 +241,12 @@ describe("DebtBridge MVP API", () => {
       assert.equal(adminDebtorList.status, 200);
       const adminDebtorItem = adminDebtorList.body.items.find((item) => item.id === debtorApplication.body.id);
       assert.deepEqual(adminDebtorItem.expectedSolutions, debtorPayload().expectedSolutions);
+      assert.equal(adminDebtorItem.totalDebtAmountCents, debtorPayload().totalDebtAmountCents);
+      assert.equal(adminDebtorItem.monthlyIncomeCents, debtorPayload().monthlyIncomeCents);
+      assert.equal(adminDebtorItem.monthlyRepaymentCapacityCents, debtorPayload().monthlyRepaymentCapacityCents);
+      assert.equal(adminDebtorItem.isUnderCollection, debtorPayload().isUnderCollection);
+      assert.equal(adminDebtorItem.hasLegalNotice, debtorPayload().hasLegalNotice);
+      assert.deepEqual(adminDebtorItem.hardshipReasons, debtorPayload().hardshipReasons);
 
       const partnerOrg = await createActivePartner(client, managerToken, partnerToken);
       const qualified = await qualifyApplication(client, managerToken, debtorApplication.body.id);

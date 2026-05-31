@@ -392,6 +392,7 @@ export function toDebtorListItem(application) {
     hardshipReasons: application.hardshipReasons,
     hardshipDescription: application.hardshipDescription,
     status: application.status,
+    submittedAt: application.createdAt,
     createdAt: application.createdAt,
     updatedAt: application.updatedAt
   };
