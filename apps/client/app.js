@@ -40,10 +40,7 @@ const labels = {
   }
 };
 
-const API_BASE =
-  window.DEBTBRIDGE_API_BASE ||
-  localStorage.getItem("debtbridgeApiBase") ||
-  "http://localhost:3000";
+const API_BASE = window.DEBTBRIDGE_API_BASE || `${location.protocol}//${location.hostname}:3000`;
 
 const fallbackConfig = {
   debtBanks: ["工商银行", "建设银行", "招商银行", "交通银行", "浦发银行", "广发银行", "平安银行", "兴业银行", "其他"],

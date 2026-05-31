@@ -12,7 +12,7 @@ The browser client is a standalone static frontend under `apps/client`. It is fo
 
 - Debtors log in through `/debtor/login`, then see only their own applications, supplement action, personal account summary, and related match cases.
 - Partner organizations log in through `/partner/login`, then see only their own organization profile/status and authorized cooperation cases.
-- The client talks to the API at `window.DEBTBRIDGE_API_BASE`, defaulting to `http://localhost:3000`.
+- The client talks to the API at `window.DEBTBRIDGE_API_BASE`, defaulting to the current browser host on port `3000`; pass `?api=http://host:port` for explicit overrides.
 
 The backend service is API-only and no longer serves browser pages. Admin UI work should live in a separate admin frontend, not in `apps/client` and not inside the API server.
 

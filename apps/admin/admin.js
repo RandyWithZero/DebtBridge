@@ -44,7 +44,9 @@ const navItems = [
   ["audit", "/admin/audit-logs", "审计记录"]
 ];
 
-const API_BASE = localStorage.getItem("debtbridgeApiBase") || "http://localhost:3000";
+const API_BASE =
+  new URLSearchParams(location.search).get("api") ||
+  `${location.protocol}//${location.hostname}:3000`;
 
 const state = {
   token: localStorage.getItem("debtbridgeAdminToken") || "",

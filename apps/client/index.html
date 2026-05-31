@@ -34,10 +34,9 @@
     </footer>
 
     <script>
-      window.DEBTBRIDGE_API_BASE =
-        new URLSearchParams(location.search).get("api") ||
-        localStorage.getItem("debtbridgeApiBase") ||
-        "http://localhost:3000";
+      const explicitApiBase = new URLSearchParams(location.search).get("api");
+      const defaultApiBase = `${location.protocol}//${location.hostname}:3000`;
+      window.DEBTBRIDGE_API_BASE = explicitApiBase || defaultApiBase;
       localStorage.setItem("debtbridgeApiBase", window.DEBTBRIDGE_API_BASE);
     </script>
     <script type="module" src="/app.js"></script>
