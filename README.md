@@ -1,6 +1,10 @@
 # DebtBridge
 
-DebtBridge MVP is a credit-card overdue negotiation matching platform. The current backend implementation is a dependency-light Node.js API that covers public intake, partner onboarding, admin review, manual matching, progress tracking, document metadata binding, and audit logs.
+DebtBridge MVP is a credit-card overdue negotiation matching platform. The current implementation is split into two independent browser frontends and one API-only Node.js backend.
+
+- Client frontend: debtor and partner login, application, profile, and case views.
+- Admin frontend: platform operations, review, matching, progress, and audit views.
+- Backend API: authentication, authorization, PostgreSQL-backed business APIs, health, and config only. It does not serve product pages.
 
 ## Backend API
 
@@ -42,30 +46,51 @@ npm run db:migrate:compose
 npm run db:seed:compose
 ```
 
-Run the local MVP app and API:
+Run the API-only backend:
 
 ```bash
-npm start
+npm run start:api
 ```
 
-Open the client and admin frontends separately:
+API URLs:
 
-- Client/public frontend: `http://localhost:3000`, `/debtor/login`, `/partner/login`
-- Admin/backoffice frontend: `http://localhost:3000/admin/login` or `http://localhost:3000/admin/dashboard`
+- Base/API status: `http://localhost:3000/`
+- Health: `http://localhost:3000/api/health`
+- Public config: `http://localhost:3000/api/public/config`
 
-The backend serves static assets only as separate frontend bundles from `apps/web` and `apps/admin`; API routes remain under `/api/*`.
-
-For admin-only local verification, the same server can be started with the explicit alias:
+Run the client frontend in a second terminal:
 
 ```bash
-npm run dev:admin
+npm run start:client
 ```
 
-Run the app and PostgreSQL together with Docker Compose:
+Open `http://localhost:3001` for debtor and partner login access.
+
+Run the admin frontend in a third terminal:
+
+```bash
+npm run start:admin
+```
+
+Open `http://localhost:3002` for the platform management back office.
+
+Validate frontend entrypoints:
+
+```bash
+npm run test:frontends
+```
+
+Run PostgreSQL, the API, the client frontend, and the admin frontend together with Docker Compose:
 
 ```bash
 docker compose up --build
 ```
+
+Compose exposes:
+
+- API: `http://localhost:3000`
+- Client frontend: `http://localhost:3001`
+- Admin frontend: `http://localhost:3002`
 
 Default admin users for local MVP verification:
 
@@ -136,6 +161,7 @@ Full REST API documentation is in `docs/api/rest-api.md`.
 Pull requests run `.github/workflows/ci.yml`, which verifies:
 
 - Node.js API tests with `npm test`.
+- Frontend entrypoint syntax checks with `npm run test:frontends`.
 - PostgreSQL migration and seed scripts against a real Postgres 16 service.
 - `docker compose config`.
 - Application container image build.

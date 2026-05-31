@@ -15,11 +15,15 @@ services:
       timeout: 5s
       retries: 10
 
-  app:
+  api:
     build:
       context: .
     environment:
       PORT: ${PORT:-3000}
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:3001}
+      ADMIN_ORIGIN: ${ADMIN_ORIGIN:-http://localhost:3002}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:3001}
+      ADMIN_URL: ${ADMIN_URL:-http://localhost:3002}
       DATABASE_URL: postgres://${POSTGRES_USER:-debtbridge}:${POSTGRES_PASSWORD:-debtbridge_dev_password}@postgres:5432/${POSTGRES_DB:-debtbridge}
     ports:
       - "3000:3000"
@@ -28,6 +32,40 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/public/config').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  client:
+    build:
+      context: .
+    command: ["npm", "run", "start:client"]
+    environment:
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3001/').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  admin:
+    build:
+      context: .
+    command: ["npm", "run", "start:admin"]
+    environment:
+      PORT: 3002
+    ports:
+      - "3002:3002"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3002/').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 5s
       retries: 3

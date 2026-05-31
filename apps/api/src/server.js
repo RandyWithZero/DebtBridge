@@ -1,19 +1,11 @@
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
 import http from "node:http";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { clearSessionCookie, getSessionToken, sessionCookie, verifyPassword } from "./auth.js";
 import { PUBLIC_CONFIG, stripInternalDocumentFields } from "./domain.js";
 import { ApiError, forbidden, notFound, validationError } from "./errors.js";
 import { createPostgresPersistence } from "./postgres-store.js";
 import { createDebtBridgeService } from "./service.js";
 import { createStore } from "./store.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const WEB_ROOT = path.resolve(__dirname, "../../web");
-const ADMIN_WEB_ROOT = path.resolve(__dirname, "../../admin");
 
 export function createApp() {
   const persistence =
@@ -25,10 +17,8 @@ export function createApp() {
     try {
       await repository.ready;
       const url = new URL(request.url, "http://localhost");
-      if (!url.pathname.startsWith("/api/")) {
-        const served = await serveStatic(request, response, url);
-        if (served) return;
-      }
+      setCorsHeaders(request, response);
+      if (writeCorsPreflight(request, response)) return;
       const route = matchRoute(request.method, url.pathname);
       if (!route) throw notFound("接口不存在");
 
@@ -53,50 +43,30 @@ export function createApp() {
   return { handler, repository, service };
 }
 
-async function serveStatic(request, response, url) {
-  if (request.method !== "GET" && request.method !== "HEAD") return false;
-  const pathname = decodeURIComponent(url.pathname);
-  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
-    return serveStaticFromRoot(ADMIN_WEB_ROOT, pathname.replace(/^\/admin\/?/, ""));
-  }
-  return serveStaticFromRoot(WEB_ROOT, pathname === "/" ? "index.html" : pathname.slice(1));
-
-  async function serveStaticFromRoot(root, relativePath) {
-    const requestedPath = path.resolve(root, relativePath || "index.html");
-    const filePath = requestedPath.startsWith(root) ? requestedPath : path.join(root, "index.html");
-    try {
-      const fileStat = await stat(filePath);
-      if (!fileStat.isFile()) return streamFile(path.join(root, "index.html"), response);
-      return streamFile(filePath, response);
-    } catch {
-      return streamFile(path.join(root, "index.html"), response);
-    }
-  }
-}
-
-function streamFile(filePath, response) {
-  response.writeHead(200, { "content-type": contentType(filePath) });
-  createReadStream(filePath).pipe(response);
-  return true;
-}
-
-function contentType(filePath) {
-  const extension = path.extname(filePath);
-  return (
-    {
-      ".html": "text/html; charset=utf-8",
-      ".css": "text/css; charset=utf-8",
-      ".js": "text/javascript; charset=utf-8",
-      ".svg": "image/svg+xml"
-    }[extension] ?? "application/octet-stream"
-  );
-}
-
 export function createHttpServer() {
   return http.createServer(createApp().handler);
 }
 
 const routes = [
+  route("GET", "/", null, ({}) => ({
+    body: {
+      service: "DebtBridge API",
+      mode: "api-only",
+      health: "/api/health",
+      publicConfig: "/api/public/config",
+      frontends: {
+        client: process.env.CLIENT_URL ?? "http://localhost:3001",
+        admin: process.env.ADMIN_URL ?? "http://localhost:3002"
+      }
+    }
+  })),
+  route("GET", "/api/health", null, ({}) => ({
+    body: {
+      ok: true,
+      service: "debtbridge-api",
+      mode: "api-only"
+    }
+  })),
   route("GET", "/api/public/config", null, ({}) => ({ body: PUBLIC_CONFIG })),
   route("POST", "/api/documents/public-upload", null, ({ body, service }) => ({
     status: 201,
@@ -324,6 +294,34 @@ function writeJson(response, status, body, headers = {}) {
     ...headers
   });
   response.end(JSON.stringify(body ?? {}));
+}
+
+function writeCorsPreflight(request, response) {
+  if (request.method !== "OPTIONS") return false;
+  response.writeHead(204, corsHeaders(request));
+  response.end();
+  return true;
+}
+
+function setCorsHeaders(request, response) {
+  for (const [key, value] of Object.entries(corsHeaders(request))) response.setHeader(key, value);
+}
+
+function corsHeaders(request) {
+  const requestOrigin = request.headers.origin;
+  const origins = [
+    process.env.CLIENT_ORIGIN ?? "http://localhost:3001",
+    process.env.ADMIN_ORIGIN ?? "http://localhost:3002",
+    "http://127.0.0.1:3001",
+    "http://127.0.0.1:3002"
+  ];
+  const allowOrigin = origins.includes(requestOrigin) ? requestOrigin : origins[0];
+  return {
+    "access-control-allow-origin": allowOrigin,
+    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-headers": "content-type, authorization",
+    "access-control-max-age": "86400"
+  };
 }
 
 function writeError(response, error) {

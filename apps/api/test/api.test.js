@@ -4,6 +4,23 @@ import http from "node:http";
 import { createApp } from "../src/server.js";
 
 describe("DebtBridge MVP API", () => {
+  it("keeps the backend API-only instead of serving product HTML", async () => {
+    const client = await startClient();
+    try {
+      const root = await client.get("/");
+      assert.equal(root.status, 200);
+      assert.equal(root.body.mode, "api-only");
+      assert.equal(root.body.frontends.client, "http://localhost:3001");
+      assert.equal(root.body.frontends.admin, "http://localhost:3002");
+
+      const unknownPage = await client.get("/admin");
+      assert.equal(unknownPage.status, 404);
+      assert.equal(unknownPage.body.error.code, "NOT_FOUND");
+    } finally {
+      await client.close();
+    }
+  });
+
   it("accepts debtor applications and rejects missing commitments", async () => {
     const client = await startClient();
     try {
@@ -178,21 +195,21 @@ describe("DebtBridge MVP API", () => {
     }
   });
 
-  it("serves a separate admin frontend and exposes manager-only admin users", async () => {
+  it("keeps frontends outside the API process and exposes manager-only admin users", async () => {
     const client = await startClient();
     try {
       const managerToken = await login(client);
       const operatorToken = await login(client, "operator@example.com");
 
-      const publicHtml = await client.text("/");
-      assert.equal(publicHtml.status, 200);
-      assert.match(publicHtml.body, /DebtBridge \| 信用卡逾期协商信息撮合/);
-      assert.doesNotMatch(publicHtml.body, /管理后台/);
+      const apiRoot = await client.get("/");
+      assert.equal(apiRoot.status, 200);
+      assert.equal(apiRoot.body.mode, "api-only");
+      assert.equal(apiRoot.body.frontends.client, "http://localhost:3001");
+      assert.equal(apiRoot.body.frontends.admin, "http://localhost:3002");
 
-      const adminHtml = await client.text("/admin/dashboard");
-      assert.equal(adminHtml.status, 200);
-      assert.match(adminHtml.body, /DebtBridge 后台管理/);
-      assert.match(adminHtml.body, /\/admin\/admin\.js/);
+      const adminPage = await client.get("/admin/dashboard");
+      assert.equal(adminPage.status, 404);
+      assert.equal(adminPage.body.error.code, "NOT_FOUND");
 
       const users = await client.get("/api/admin/users", managerToken);
       assert.equal(users.status, 200);
