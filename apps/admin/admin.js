@@ -64,7 +64,7 @@ const partnerReviewTransitions = {
   rejected: []
 };
 
-const API_BASE = localStorage.getItem("debtbridgeApiBase") || "http://localhost:3000";
+const API_BASE = window.DEBTBRIDGE_API_BASE || localStorage.getItem("debtbridgeApiBase") || "";
 
 const state = {
   token: localStorage.getItem("debtbridgeAdminToken") || "",

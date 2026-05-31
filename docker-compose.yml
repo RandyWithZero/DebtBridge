@@ -41,6 +41,7 @@ services:
       context: .
     command: ["npm", "run", "start:client"]
     environment:
+      API_TARGET: http://api:3000
       PORT: 3001
     ports:
       - "3001:3001"
@@ -58,6 +59,7 @@ services:
       context: .
     command: ["npm", "run", "start:admin"]
     environment:
+      API_TARGET: http://api:3000
       PORT: 3002
     ports:
       - "3002:3002"

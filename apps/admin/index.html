@@ -11,6 +11,12 @@
   </head>
   <body>
     <main id="admin-app" tabindex="-1"></main>
+    <script>
+      const explicitApiBase = new URLSearchParams(location.search).get("api");
+      const defaultApiBase = "";
+      window.DEBTBRIDGE_API_BASE = explicitApiBase || defaultApiBase;
+      localStorage.setItem("debtbridgeApiBase", window.DEBTBRIDGE_API_BASE);
+    </script>
     <script type="module" src="/admin.js"></script>
   </body>
 </html>

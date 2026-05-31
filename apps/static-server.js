@@ -14,15 +14,18 @@ if (!appName || !["client", "admin"].includes(appName)) {
 
 const root = path.resolve(__dirname, appName);
 const port = Number(process.env.PORT ?? (appName === "client" ? 3001 : 3002));
+const apiTarget = process.env.API_TARGET || "http://localhost:3000";
 
 const server = http.createServer(async (request, response) => {
+  const url = new URL(request.url, "http://localhost");
+  if (url.pathname.startsWith("/api/")) return proxyApiRequest(request, response, url);
+
   if (request.method !== "GET" && request.method !== "HEAD") {
     response.writeHead(405, { "content-type": "application/json; charset=utf-8" });
     response.end(JSON.stringify({ error: { message: "仅支持静态资源 GET/HEAD 请求" } }));
     return;
   }
 
-  const url = new URL(request.url, "http://localhost");
   const pathname = decodeURIComponent(url.pathname);
   const relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
   const requestedPath = path.resolve(root, relativePath);
@@ -41,6 +44,44 @@ const server = http.createServer(async (request, response) => {
 server.listen(port, () => {
   console.log(`DebtBridge ${appName} frontend listening on http://localhost:${port}`);
 });
+
+async function proxyApiRequest(request, response, url) {
+  try {
+    const targetUrl = new URL(`${url.pathname}${url.search}`, apiTarget);
+    const upstream = await fetch(targetUrl, {
+      method: request.method,
+      headers: forwardedHeaders(request.headers),
+      body: ["GET", "HEAD"].includes(request.method) ? undefined : await readBody(request)
+    });
+    const headers = Object.fromEntries(upstream.headers.entries());
+    response.writeHead(upstream.status, headers);
+    if (request.method === "HEAD") {
+      response.end();
+      return;
+    }
+    response.end(Buffer.from(await upstream.arrayBuffer()));
+  } catch (error) {
+    response.writeHead(502, { "content-type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ error: { message: "API 代理请求失败", detail: error.message } }));
+  }
+}
+
+function forwardedHeaders(headers) {
+  const result = { ...headers };
+  delete result.host;
+  delete result.connection;
+  delete result["content-length"];
+  return result;
+}
+
+function readBody(request) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    request.on("data", (chunk) => chunks.push(chunk));
+    request.on("end", () => resolve(Buffer.concat(chunks)));
+    request.on("error", reject);
+  });
+}
 
 function streamFile(filePath, response) {
   response.writeHead(200, { "content-type": contentType(filePath) });

@@ -12,7 +12,7 @@ The browser client is a standalone static frontend under `apps/client`. It is fo
 
 - Debtors log in through `/debtor/login`, then see only their own applications, supplement action, personal account summary, and related match cases.
 - Partner organizations log in through `/partner/login`, then see only their own organization profile/status and authorized cooperation cases.
-- The client talks to the API at `window.DEBTBRIDGE_API_BASE`, defaulting to the current browser host on port `3000`; pass `?api=http://host:port` for explicit overrides.
+- The client talks to the API at `window.DEBTBRIDGE_API_BASE`, defaulting to the same origin with `/api/*` paths; pass `?api=http://host:port` only for explicit local overrides.
 
 The backend service is API-only and no longer serves browser pages. Admin UI work should live in a separate admin frontend, not in `apps/client` and not inside the API server.
 
@@ -82,6 +82,8 @@ Compose exposes:
 - Client frontend: `http://localhost:3001`
 - Admin frontend: `http://localhost:3002`
 
+The client and admin frontends call same-origin `/api/*` by default. In Docker Compose, their static servers proxy `/api/*` to the internal `api:3000` service so browser traffic does not need to call port `3000` directly.
+
 Default admin users for local MVP verification:
 
 | Email | Password | Role |
@@ -149,11 +151,11 @@ Full REST API documentation is in `docs/api/rest-api.md`.
 
 ## Frontend integration
 
-The API base URL is the backend origin plus `/api`. For local development with the default backend port:
+The browser-facing default API base URL is same-origin, with app requests using `/api/*` paths. For local development with a separate backend origin, pass `?api=http://localhost:3000` or set `window.DEBTBRIDGE_API_BASE` before loading the app.
 
 ```bash
-CLIENT_API_BASE_URL=http://localhost:3000/api
-ADMIN_API_BASE_URL=http://localhost:3000/api
+API_TARGET=http://localhost:3000 npm run start:client
+API_TARGET=http://localhost:3000 npm run start:admin
 ```
 
 Configure the backend CORS allowlist with the browser origins of the two frontend apps:
