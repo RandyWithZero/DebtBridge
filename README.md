@@ -48,7 +48,18 @@ Run the local MVP app and API:
 npm start
 ```
 
-Open `http://localhost:3000` for the public site, debtor application, partner onboarding, and operations back office.
+Open the client and admin frontends separately:
+
+- Client/public frontend: `http://localhost:3000`, `/debtor/login`, `/partner/login`
+- Admin/backoffice frontend: `http://localhost:3000/admin/login` or `http://localhost:3000/admin/dashboard`
+
+The backend serves static assets only as separate frontend bundles from `apps/web` and `apps/admin`; API routes remain under `/api/*`.
+
+For admin-only local verification, the same server can be started with the explicit alias:
+
+```bash
+npm run dev:admin
+```
 
 Run the app and PostgreSQL together with Docker Compose:
 
@@ -73,6 +84,7 @@ Implemented endpoint groups:
 - Debtor portal: `POST /api/debtor/me/applications`, `GET /api/debtor/me/applications`, `GET /api/debtor/applications/:id`, `GET /api/debtor/me/match-cases`
 - Partner portal: `POST /api/partner/me/application`, `GET /api/partner/me/organizations`, `GET /api/partner/me/match-cases`, `GET /api/partner/match-cases/:id`
 - Admin auth: `POST /api/admin/auth/login`, `GET /api/admin/auth/me`, `POST /api/admin/auth/logout`
+- Admin users: `GET /api/admin/users`
 - Admin debtor review: `GET /api/admin/debtor-applications`, `GET /api/admin/debtor-applications/:id`, `POST /api/admin/debtor-applications/:id/review`
 - Admin partner review: `GET /api/admin/partner-organizations`, `GET /api/admin/partner-organizations/:id`, `POST /api/admin/partner-organizations/:id/review`
 - Admin matching: `POST /api/admin/match-cases`, `GET /api/admin/match-cases`, `GET /api/admin/match-cases/:id`, `POST /api/admin/match-cases/:id/transition`
