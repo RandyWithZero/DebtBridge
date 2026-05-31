@@ -54,6 +54,29 @@ export function createDebtBridgeService(repository) {
       };
     },
 
+    supplementDebtorApplication(id, input, actor) {
+      const application = getOrThrow(repository.store.debtorApplications, id, "欠款人申请不存在");
+      if (application.phoneNormalized !== actor.phone) throw forbidden("只能补充本人申请");
+      const documentIds = input.supportingDocumentIds ?? [];
+      if (!Array.isArray(documentIds)) throw validationError({ supportingDocumentIds: "附件引用必须是字符串数组" });
+      const binding = repository.bindDocuments(documentIds, "debtor_application", application.id, "debtor_supporting_material");
+      if (!binding.ok) throw validationError({ supportingDocumentIds: `${binding.documentId}: ${binding.reason}` });
+      const before = { status: application.status };
+      if (application.status === "need_more_info") application.status = "under_review";
+      application.hardshipDescription = input.note?.trim() || application.hardshipDescription;
+      application.updatedAt = new Date().toISOString();
+      repository.addAuditLog({
+        actor,
+        action: "DEBTOR_APPLICATION_SUPPLEMENT",
+        entityType: "debtor_application",
+        entityId: application.id,
+        before,
+        after: { status: application.status, documentCount: documentIds.length },
+        reason: input.note ?? null
+      });
+      return application;
+    },
+
     createPartnerApplication(input) {
       validatePartnerApplication(input);
       if (
@@ -85,6 +108,33 @@ export function createDebtBridgeService(repository) {
         status: organization.status,
         submittedAt: organization.createdAt
       };
+    },
+
+    supplementPartnerOrganization(input, actor) {
+      const organization = getOrThrow(repository.store.partnerOrganizations, actor.organizationId, "机构不存在");
+      const bindings = [
+        [input.licenseDocumentIds ?? [], "partner_business_license"],
+        [input.legalRepresentativeIdDocumentIds ?? [], "partner_legal_representative_id"],
+        [input.qualificationDocumentIds ?? [], "partner_qualification"]
+      ];
+      for (const [documentIds, purpose] of bindings) {
+        if (!Array.isArray(documentIds)) throw validationError({ [purpose]: "附件引用必须是字符串数组" });
+        const binding = repository.bindDocuments(documentIds, "partner_organization", organization.id, purpose);
+        if (!binding.ok) throw validationError({ [purpose]: `${binding.documentId}: ${binding.reason}` });
+      }
+      const before = { status: organization.status };
+      if (organization.status === "need_more_info") organization.status = "under_review";
+      organization.updatedAt = new Date().toISOString();
+      repository.addAuditLog({
+        actor,
+        action: "PARTNER_ORGANIZATION_SUPPLEMENT",
+        entityType: "partner_organization",
+        entityId: organization.id,
+        before,
+        after: { status: organization.status },
+        reason: input.note ?? null
+      });
+      return organization;
     },
 
     reviewDebtorApplication(id, input, actor) {

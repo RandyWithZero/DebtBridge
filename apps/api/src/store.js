@@ -12,6 +12,7 @@ import {
 export function createStore() {
   const store = {
     sessions: new Map(),
+    clientSessions: new Map(),
     documents: new Map(),
     debtorApplications: new Map(),
     partnerOrganizations: new Map(),
@@ -29,14 +30,25 @@ export function createStore() {
       return token;
     },
 
+    createClientSession(identity) {
+      const token = prefixedId("client_session");
+      store.clientSessions.set(token, { token, identity, createdAt: nowIso() });
+      return token;
+    },
+
     deleteSession(token) {
       store.sessions.delete(token);
+      store.clientSessions.delete(token);
     },
 
     getSessionUser(token) {
       const session = store.sessions.get(token);
       if (!session) return undefined;
       return ADMIN_USERS.find((user) => user.id === session.userId);
+    },
+
+    getClientSession(token) {
+      return store.clientSessions.get(token)?.identity;
     },
 
     createDocument(input, uploadedByAdminId = null) {
@@ -257,6 +269,33 @@ export function createStore() {
         query,
         (item) => item
       );
+    },
+
+    findDebtorApplicationsByPhone(phone) {
+      const normalized = normalizePhone(phone);
+      return [...store.debtorApplications.values()]
+        .filter((item) => item.phoneNormalized === normalized)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    },
+
+    findPartnerOrganizationByPhone(phone) {
+      const normalized = normalizePhone(phone);
+      return [...store.partnerOrganizations.values()]
+        .filter((item) => item.contactPhoneNormalized === normalized)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    },
+
+    findMatchCasesByDebtorPhone(phone) {
+      const applicationIds = new Set(this.findDebtorApplicationsByPhone(phone).map((item) => item.id));
+      return [...store.matchCases.values()]
+        .filter((item) => applicationIds.has(item.debtorApplicationId))
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    },
+
+    findMatchCasesByPartnerOrganization(id) {
+      return [...store.matchCases.values()]
+        .filter((item) => item.partnerOrganizationId === id)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     }
   };
 }
