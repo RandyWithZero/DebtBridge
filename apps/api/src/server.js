@@ -7,9 +7,9 @@ import { createPostgresPersistence } from "./postgres-store.js";
 import { createDebtBridgeService } from "./service.js";
 import { createStore } from "./store.js";
 
-const API_DESCRIPTION = "DebtBridge backend API";
-const CORS_METHODS = "GET,POST,OPTIONS";
-const CORS_HEADERS = "Content-Type,Authorization";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const WEB_ROOT = path.resolve(__dirname, "../../web");
+const ADMIN_WEB_ROOT = path.resolve(__dirname, "../../admin");
 
 export function createApp() {
   const persistence =
@@ -48,6 +48,45 @@ export function createApp() {
   }
 
   return { handler, repository, service };
+}
+
+async function serveStatic(request, response, url) {
+  if (request.method !== "GET" && request.method !== "HEAD") return false;
+  const pathname = decodeURIComponent(url.pathname);
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+    return serveStaticFromRoot(ADMIN_WEB_ROOT, pathname.replace(/^\/admin\/?/, ""));
+  }
+  return serveStaticFromRoot(WEB_ROOT, pathname === "/" ? "index.html" : pathname.slice(1));
+
+  async function serveStaticFromRoot(root, relativePath) {
+    const requestedPath = path.resolve(root, relativePath || "index.html");
+    const filePath = requestedPath.startsWith(root) ? requestedPath : path.join(root, "index.html");
+    try {
+      const fileStat = await stat(filePath);
+      if (!fileStat.isFile()) return streamFile(path.join(root, "index.html"), response);
+      return streamFile(filePath, response);
+    } catch {
+      return streamFile(path.join(root, "index.html"), response);
+    }
+  }
+}
+
+function streamFile(filePath, response) {
+  response.writeHead(200, { "content-type": contentType(filePath) });
+  createReadStream(filePath).pipe(response);
+  return true;
+}
+
+function contentType(filePath) {
+  const extension = path.extname(filePath);
+  return (
+    {
+      ".html": "text/html; charset=utf-8",
+      ".css": "text/css; charset=utf-8",
+      ".js": "text/javascript; charset=utf-8",
+      ".svg": "image/svg+xml"
+    }[extension] ?? "application/octet-stream"
+  );
 }
 
 export function createHttpServer() {
@@ -92,6 +131,9 @@ const routes = [
   route("POST", "/api/admin/auth/login", null, loginRoute(["manager", "operator"])),
   route("GET", "/api/admin/auth/me", ["manager", "operator"], ({ actor }) => ({ body: { user: publicUser(actor) } })),
   route("POST", "/api/admin/auth/logout", ["manager", "operator"], logoutRoute()),
+  route("GET", "/api/admin/users", ["manager"], ({ url, repository }) => ({
+    body: repository.listAdminUsers(Object.fromEntries(url.searchParams))
+  })),
   route("POST", "/api/debtor/me/applications", ["debtor"], ({ body, request, actor, service }) => ({
     status: 201,
     body: service.createDebtorApplication(body, requestMetadata(request), actor)

@@ -43,6 +43,20 @@ export function createStore({ persistence } = {}) {
       return store.users.get(id);
     },
 
+    listAdminUsers(query = {}) {
+      const page = positiveInt(query.page, 1);
+      const pageSize = Math.min(positiveInt(query.pageSize, 20), 100);
+      const users = [...store.users.values()]
+        .filter((user) => ["manager", "operator"].includes(user.role))
+        .sort((a, b) => a.email.localeCompare(b.email));
+      return {
+        items: users.slice((page - 1) * pageSize, page * pageSize).map(toAdminUserListItem),
+        total: users.length,
+        page,
+        pageSize
+      };
+    },
+
     createSession(user) {
       const token = prefixedId("session");
       store.sessions.set(token, { token, userId: user.id, createdAt: nowIso() });
@@ -384,6 +398,17 @@ export function toPartnerListItem(organization) {
     capabilities: organization.capabilities,
     status: organization.status,
     createdAt: organization.createdAt
+  };
+}
+
+export function toAdminUserListItem(user) {
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    displayName: user.displayName,
+    status: user.status,
+    lastLoginAt: user.lastLoginAt
   };
 }
 

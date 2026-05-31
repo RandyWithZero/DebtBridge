@@ -7,6 +7,7 @@
     "dev": "node apps/api/src/server.js",
     "start": "node apps/api/src/server.js",
     "start:api": "node apps/api/src/server.js",
+    "dev:admin": "node apps/api/src/server.js",
     "test": "node --test",
     "db:validate": "prisma validate",
     "db:migrate": "psql \"${DATABASE_URL:-postgres://debtbridge:debtbridge_dev_password@localhost:5432/debtbridge}\" -v ON_ERROR_STOP=1 -f db/migrations/0001_debtbridge_mvp.sql",

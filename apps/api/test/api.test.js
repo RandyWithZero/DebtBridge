@@ -222,6 +222,37 @@ describe("DebtBridge MVP API", () => {
       await client.close();
     }
   });
+
+  it("serves a separate admin frontend and exposes manager-only admin users", async () => {
+    const client = await startClient();
+    try {
+      const managerToken = await login(client);
+      const operatorToken = await login(client, "operator@example.com");
+
+      const publicHtml = await client.text("/");
+      assert.equal(publicHtml.status, 200);
+      assert.match(publicHtml.body, /DebtBridge \| 信用卡逾期协商信息撮合/);
+      assert.doesNotMatch(publicHtml.body, /管理后台/);
+
+      const adminHtml = await client.text("/admin/dashboard");
+      assert.equal(adminHtml.status, 200);
+      assert.match(adminHtml.body, /DebtBridge 后台管理/);
+      assert.match(adminHtml.body, /\/admin\/admin\.js/);
+
+      const users = await client.get("/api/admin/users", managerToken);
+      assert.equal(users.status, 200);
+      assert.deepEqual(
+        users.body.items.map((item) => item.email),
+        ["admin@example.com", "operator@example.com"]
+      );
+      assert.equal(users.body.items[0].passwordHash, undefined);
+
+      const blocked = await client.get("/api/admin/users", operatorToken);
+      assert.equal(blocked.status, 403);
+    } finally {
+      await client.close();
+    }
+  });
 });
 
 async function createQualifiedApplication(client, token) {
@@ -353,6 +384,13 @@ async function startClient(env = {}) {
     },
     async options(path, origin) {
       return request(port, "OPTIONS", path, undefined, undefined, origin);
+    },
+    async text(path) {
+      const response = await fetch(`http://127.0.0.1:${port}${path}`);
+      return {
+        status: response.status,
+        body: await response.text()
+      };
     },
     close() {
       return new Promise((resolve, reject) => {
