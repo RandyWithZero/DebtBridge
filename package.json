@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "node apps/api/src/server.js",
     "start:api": "node apps/api/src/server.js",
     "test": "node --test"
   },
