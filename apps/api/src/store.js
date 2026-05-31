@@ -23,6 +23,7 @@ export function createStore({ persistence } = {}) {
 
   const repository = {
     store,
+    storageDriver: persistence ? "postgres" : "memory",
     ready: persistence ? hydrateFromPersistence(store, persistence) : Promise.resolve(),
 
     findUserByEmail(email) {

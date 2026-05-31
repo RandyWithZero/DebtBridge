@@ -7,6 +7,10 @@ import { createPostgresPersistence } from "./postgres-store.js";
 import { createDebtBridgeService } from "./service.js";
 import { createStore } from "./store.js";
 
+const API_DESCRIPTION = "DebtBridge backend API";
+const CORS_METHODS = "GET,POST,OPTIONS";
+const CORS_HEADERS = "Content-Type,Authorization";
+
 export function createApp() {
   const persistence =
     process.env.STORAGE_DRIVER === "memory" ? null : createPostgresPersistence(process.env.DATABASE_URL);
@@ -15,10 +19,13 @@ export function createApp() {
 
   async function handler(request, response) {
     try {
+      if (request.method === "OPTIONS") {
+        writePreflight(request, response);
+        return;
+      }
+
       await repository.ready;
       const url = new URL(request.url, "http://localhost");
-      setCorsHeaders(request, response);
-      if (writeCorsPreflight(request, response)) return;
       const route = matchRoute(request.method, url.pathname);
       if (!route) throw notFound("接口不存在");
 
@@ -34,9 +41,9 @@ export function createApp() {
         service
       });
 
-      writeJson(response, result.status ?? 200, result.body, result.headers);
+      writeJson(request, response, result.status ?? 200, result.body, result.headers);
     } catch (error) {
-      writeError(response, error);
+      writeError(request, response, error);
     }
   }
 
@@ -50,21 +57,18 @@ export function createHttpServer() {
 const routes = [
   route("GET", "/", null, ({}) => ({
     body: {
-      service: "DebtBridge API",
-      mode: "api-only",
+      service: API_DESCRIPTION,
+      status: "ok",
+      baseUrl: "/api",
       health: "/api/health",
-      publicConfig: "/api/public/config",
-      frontends: {
-        client: process.env.CLIENT_URL ?? "http://localhost:3001",
-        admin: process.env.ADMIN_URL ?? "http://localhost:3002"
-      }
+      docs: "docs/api/rest-api.md"
     }
   })),
-  route("GET", "/api/health", null, ({}) => ({
+  route("GET", "/api/health", null, ({ repository }) => ({
     body: {
-      ok: true,
+      status: "ok",
       service: "debtbridge-api",
-      mode: "api-only"
+      storage: repository.storageDriver
     }
   })),
   route("GET", "/api/public/config", null, ({}) => ({ body: PUBLIC_CONFIG })),
@@ -288,45 +292,18 @@ function logoutRoute() {
   };
 }
 
-function writeJson(response, status, body, headers = {}) {
+function writeJson(request, response, status, body, headers = {}) {
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
+    ...corsHeaders(request),
     ...headers
   });
   response.end(JSON.stringify(body ?? {}));
 }
 
-function writeCorsPreflight(request, response) {
-  if (request.method !== "OPTIONS") return false;
-  response.writeHead(204, corsHeaders(request));
-  response.end();
-  return true;
-}
-
-function setCorsHeaders(request, response) {
-  for (const [key, value] of Object.entries(corsHeaders(request))) response.setHeader(key, value);
-}
-
-function corsHeaders(request) {
-  const requestOrigin = request.headers.origin;
-  const origins = [
-    process.env.CLIENT_ORIGIN ?? "http://localhost:3001",
-    process.env.ADMIN_ORIGIN ?? "http://localhost:3002",
-    "http://127.0.0.1:3001",
-    "http://127.0.0.1:3002"
-  ];
-  const allowOrigin = origins.includes(requestOrigin) ? requestOrigin : origins[0];
-  return {
-    "access-control-allow-origin": allowOrigin,
-    "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type, authorization",
-    "access-control-max-age": "86400"
-  };
-}
-
-function writeError(response, error) {
+function writeError(request, response, error) {
   if (error instanceof ApiError) {
-    writeJson(response, error.status, {
+    writeJson(request, response, error.status, {
       error: {
         code: error.code,
         message: error.message,
@@ -335,12 +312,61 @@ function writeError(response, error) {
     });
     return;
   }
-  writeJson(response, 500, {
+  writeJson(request, response, 500, {
     error: {
       code: "INTERNAL_SERVER_ERROR",
       message: "服务器内部错误"
     }
   });
+}
+
+function writePreflight(request, response) {
+  const headers = corsHeaders(request);
+  if (request.headers.origin && !headers["access-control-allow-origin"]) {
+    writeJson(request, response, 403, {
+      error: {
+        code: "CORS_ORIGIN_FORBIDDEN",
+        message: "当前前端来源未被允许访问 API"
+      }
+    });
+    return;
+  }
+
+  response.writeHead(204, headers);
+  response.end();
+}
+
+function corsHeaders(request) {
+  const origin = request.headers.origin;
+  const allowedOrigins = getAllowedOrigins();
+  const headers = {
+    vary: "Origin",
+    "access-control-allow-methods": CORS_METHODS,
+    "access-control-allow-headers": CORS_HEADERS,
+    "access-control-max-age": "600"
+  };
+
+  if (origin && allowedOrigins.has(origin)) {
+    headers["access-control-allow-origin"] = origin;
+    headers["access-control-allow-credentials"] = "true";
+  }
+
+  return headers;
+}
+
+function getAllowedOrigins() {
+  const rawOrigins = [
+    process.env.CLIENT_ORIGIN,
+    process.env.ADMIN_ORIGIN,
+    process.env.CORS_ORIGINS
+  ].filter(Boolean);
+
+  return new Set(
+    rawOrigins
+      .flatMap((value) => value.split(","))
+      .map((value) => value.trim())
+      .filter(Boolean)
+  );
 }
 
 function requestMetadata(request) {
