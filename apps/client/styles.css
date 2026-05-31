@@ -563,18 +563,6 @@ h3 {
   font-weight: 500;
 }
 
-.final-routing {
-  display: grid;
-  grid-template-columns: 0.8fr 1.2fr;
-  gap: 32px;
-  align-items: start;
-}
-
-.route-card {
-  border-color: var(--border);
-  background: var(--primary-dark);
-}
-
 .dashboard-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 28px max(56px, calc((100vw - var(--content-max)) / 2)) 72px;
@@ -925,8 +913,7 @@ th {
   .hero,
   .auth-page,
   .form-layout,
-  .compliance-panel,
-  .final-routing {
+  .compliance-panel {
     grid-template-columns: 1fr;
   }
 
