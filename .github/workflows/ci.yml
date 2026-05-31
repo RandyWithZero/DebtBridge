@@ -41,6 +41,9 @@ jobs:
       - name: Run API tests with memory store
         run: STORAGE_DRIVER=memory npm test
 
+      - name: Validate frontend entrypoints
+        run: npm run test:frontends
+
       - name: Install PostgreSQL client
         run: |
           sudo apt-get update
