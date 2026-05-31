@@ -103,6 +103,17 @@ textarea {
   border-color: var(--primary);
 }
 
+.top-nav .nav-action {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--primary);
+}
+
 .mobile-menu {
   display: none;
 }
