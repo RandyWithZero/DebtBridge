@@ -42,13 +42,13 @@ npm run db:migrate:compose
 npm run db:seed:compose
 ```
 
-Run the local MVP app and API:
+Run the local API service:
 
 ```bash
 npm start
 ```
 
-Open `http://localhost:3000` for the public site, debtor application, partner onboarding, and operations back office.
+Open `http://localhost:3000/` for a JSON service descriptor, or `http://localhost:3000/api/health` for health checks. The backend does not serve the client product UI or admin UI; those are separate frontend apps that call this API.
 
 Run the app and PostgreSQL together with Docker Compose:
 
@@ -65,6 +65,7 @@ Default admin users for local MVP verification:
 
 Implemented endpoint groups:
 
+- API health: `GET /api/health`
 - Public config: `GET /api/public/config`
 - Public document metadata upload: `POST /api/documents/public-upload`
 - Debtor intake: `POST /api/debtor-applications`
@@ -118,6 +119,32 @@ The initial model covers:
 The backend repository writes application submission, partner onboarding, match creation, review transitions, document metadata, notes, and audit logs to the normalized PostgreSQL tables when `DATABASE_URL` is configured. Document upload endpoints create controlled metadata records and bind references to business entities; they do not persist binary file contents yet.
 
 Full REST API documentation is in `docs/api/rest-api.md`.
+
+## Frontend integration
+
+The API base URL is the backend origin plus `/api`. For local development with the default backend port:
+
+```bash
+CLIENT_API_BASE_URL=http://localhost:3000/api
+ADMIN_API_BASE_URL=http://localhost:3000/api
+```
+
+Configure the backend CORS allowlist with the browser origins of the two frontend apps:
+
+```bash
+CLIENT_ORIGIN=http://localhost:5173
+ADMIN_ORIGIN=http://localhost:5174
+CORS_ORIGINS=
+```
+
+Authenticated browser clients should send requests with credentials enabled so the httpOnly `db_session` cookie set by login is included. Non-browser clients may send `Authorization: Bearer <token>` using the token returned by the login endpoint.
+
+Known frontend contract gaps for GOO-19/GOO-20:
+
+- File endpoints currently create and bind controlled document metadata only; binary upload/storage URLs are not implemented.
+- Debtor and partner self-service profile update endpoints are not implemented.
+- Partner case detail returns a masked debtor summary; no partner-side note or status action endpoints exist yet.
+- Admin statistics/dashboard endpoints are not implemented beyond filtered list endpoints and audit logs.
 
 ## CI and local infrastructure
 

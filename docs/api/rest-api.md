@@ -2,7 +2,18 @@
 
 Base URL: `/api`
 
+The backend is API-only. It does not serve the client product UI or admin UI; `/` returns a JSON service descriptor and frontend page routing belongs to the separate frontend apps.
+
 All endpoints accept and return JSON. Authenticated endpoints accept either the httpOnly `db_session` cookie set by login or `Authorization: Bearer <token>`.
+
+Browser frontends must be allowlisted by origin. Set `CLIENT_ORIGIN` and `ADMIN_ORIGIN` for the two main frontend apps, and `CORS_ORIGINS` for optional comma-separated preview/deployed origins. Browser requests that rely on cookies must send credentials.
+
+Suggested frontend environment:
+
+```bash
+CLIENT_API_BASE_URL=http://localhost:3000/api
+ADMIN_API_BASE_URL=http://localhost:3000/api
+```
 
 Error shape:
 
@@ -15,6 +26,22 @@ Error shape:
       "phone": "手机号格式不正确"
     }
   }
+}
+```
+
+## Health
+
+### GET `/health`
+
+Returns service health and the active storage adapter.
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "service": "debtbridge-api",
+  "storage": "postgres"
 }
 ```
 
