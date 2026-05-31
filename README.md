@@ -48,14 +48,9 @@ Run the local API service:
 npm start
 ```
 
-Open the client and admin frontends separately:
+Open `http://localhost:3000/` for a JSON service descriptor, or `http://localhost:3000/api/health` for health checks. The backend does not serve the client product UI or admin UI; those are separate frontend apps that call this API.
 
-- Client/public frontend: `http://localhost:3000`, `/debtor/login`, `/partner/login`
-- Admin/backoffice frontend: `http://localhost:3000/admin/login` or `http://localhost:3000/admin/dashboard`
-
-The backend serves static assets only as separate frontend bundles from `apps/web` and `apps/admin`; API routes remain under `/api/*`.
-
-For admin-only local verification, the same server can be started with the explicit alias:
+For admin API-only local verification, the same server can be started with the explicit alias:
 
 ```bash
 npm run dev:admin
