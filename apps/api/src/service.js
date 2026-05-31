@@ -76,9 +76,9 @@ export function createDebtBridgeService(repository) {
         actor?.role === "partner" ? actor.id : null
       );
       const bindings = [
-        [input.licenseDocumentIds, "partner_business_license"],
-        [input.legalRepresentativeIdDocumentIds, "partner_legal_representative_id"],
-        [input.qualificationDocumentIds, "partner_qualification"]
+        [input.licenseDocumentIds ?? [], "partner_business_license"],
+        [input.legalRepresentativeIdDocumentIds ?? [], "partner_legal_representative_id"],
+        [input.qualificationDocumentIds ?? [], "partner_qualification"]
       ];
       for (const [documentIds, purpose] of bindings) {
         const binding = repository.bindDocuments(documentIds, "partner_organization", organization.id, purpose);
@@ -140,9 +140,12 @@ export function createDebtBridgeService(repository) {
       if (input.decision === "active") {
         const documents = repository.listDocuments("partner_organization", organization.id);
         const hasLicense = documents.some((document) => document.purpose === "partner_business_license");
+        const hasLegalRepresentativeId = documents.some(
+          (document) => document.purpose === "partner_legal_representative_id"
+        );
         const hasQualification = documents.some((document) => document.purpose === "partner_qualification");
-        if (!hasLicense || !hasQualification) {
-          throw validationError({ documents: "激活机构前必须绑定营业执照和业务资质" });
+        if (!hasLicense || !hasLegalRepresentativeId || !hasQualification) {
+          throw validationError({ documents: "激活机构前必须绑定营业执照、法人身份证和业务资质" });
         }
       }
       const before = { status: organization.status };

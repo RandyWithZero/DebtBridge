@@ -163,6 +163,36 @@ describe("DebtBridge MVP API", () => {
     }
   });
 
+  it("saves partner onboarding without document IDs but blocks activation until required documents are bound", async () => {
+    const client = await startClient();
+    try {
+      const managerToken = await login(client);
+      const created = await client.post(
+        "/api/partner-applications",
+        partnerPayload(undefined, undefined, undefined)
+      );
+      assert.equal(created.status, 201);
+      assert.equal(created.body.status, "pending_review");
+
+      const underReview = await client.post(
+        `/api/admin/partner-organizations/${created.body.id}/review`,
+        { decision: "under_review", reason: "开始资质审核" },
+        managerToken
+      );
+      assert.equal(underReview.status, 200);
+
+      const active = await client.post(
+        `/api/admin/partner-organizations/${created.body.id}/review`,
+        { decision: "active", reason: "资料待补齐时不能激活" },
+        managerToken
+      );
+      assert.equal(active.status, 400);
+      assert.equal(active.body.error.fields.documents, "激活机构前必须绑定营业执照、法人身份证和业务资质");
+    } finally {
+      await client.close();
+    }
+  });
+
   it("isolates debtor, partner, and admin identity APIs", async () => {
     const client = await startClient();
     try {
@@ -312,9 +342,9 @@ function partnerPayload(licenseId, idDocumentId, qualificationId) {
     maxInstallmentMonths: 60,
     averageProcessingDays: 15,
     cooperationModes: ["success_fee"],
-    licenseDocumentIds: [licenseId],
-    legalRepresentativeIdDocumentIds: [idDocumentId],
-    qualificationDocumentIds: [qualificationId],
+    licenseDocumentIds: licenseId ? [licenseId] : [],
+    legalRepresentativeIdDocumentIds: idDocumentId ? [idDocumentId] : [],
+    qualificationDocumentIds: qualificationId ? [qualificationId] : [],
     complianceAccepted: true
   };
 }
