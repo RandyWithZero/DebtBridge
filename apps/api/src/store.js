@@ -383,8 +383,16 @@ export function toDebtorListItem(application) {
     bankName: application.bankName,
     totalDebtAmountCents: application.totalDebtAmountCents,
     overdueRange: application.overdueRange,
+    isUnderCollection: application.isUnderCollection,
+    hasLegalNotice: application.hasLegalNotice,
+    monthlyIncomeCents: application.monthlyIncomeCents,
+    monthlyRepaymentCapacityCents: application.monthlyRepaymentCapacityCents,
+    repaymentCapacityNeedsReview: application.repaymentCapacityNeedsReview,
     expectedSolutions: application.expectedSolutions,
+    hardshipReasons: application.hardshipReasons,
+    hardshipDescription: application.hardshipDescription,
     status: application.status,
+    submittedAt: application.createdAt,
     createdAt: application.createdAt,
     updatedAt: application.updatedAt
   };

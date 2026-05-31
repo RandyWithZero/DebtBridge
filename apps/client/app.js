@@ -498,6 +498,7 @@ async function submitDebtorForm(event) {
   };
   const localErrors = {
     ...required(payload, ["name", "phone", "city", "bankName", "overdueRange"]),
+    ...nonNegativeMoneyFields(payload, ["totalDebtAmountCents", "monthlyIncomeCents", "monthlyRepaymentCapacityCents"]),
     ...(!/^1[3-9]\d{9}$/.test(payload.phone) ? { phone: "手机号格式不正确" } : {}),
     ...(payload.isUnderCollection === null ? { isUnderCollection: "请选择催收状态" } : {}),
     ...(payload.hasLegalNotice === null ? { hasLegalNotice: "请选择律师函/传票状态" } : {}),
@@ -721,6 +722,19 @@ function required(payload, names) {
   return Object.fromEntries(names.filter((name) => !payload[name]).map((name) => [name, "必填"]));
 }
 
+function nonNegativeMoneyFields(payload, names) {
+  const labels = {
+    totalDebtAmountCents: "totalDebtAmount",
+    monthlyIncomeCents: "monthlyIncome",
+    monthlyRepaymentCapacityCents: "monthlyRepaymentCapacity"
+  };
+  return Object.fromEntries(
+    names
+      .filter((name) => !Number.isInteger(payload[name]) || payload[name] < 0)
+      .map((name) => [labels[name] || name, "请填写非负金额"])
+  );
+}
+
 function accepted(payload, names) {
   return Object.fromEntries(names.filter((name) => payload[name] !== true).map((name) => [name, "必须勾选确认"]));
 }
@@ -763,11 +777,13 @@ function text(data, name) {
 }
 
 function yuanToCents(value) {
+  if (String(value ?? "").trim() === "") return null;
   const number = Number(value);
-  return Number.isFinite(number) && number >= 0 ? Math.round(number * 100) : -1;
+  return Number.isFinite(number) && number >= 0 ? Math.round(number * 100) : null;
 }
 
 function numberOrNull(value) {
+  if (String(value ?? "").trim() === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
