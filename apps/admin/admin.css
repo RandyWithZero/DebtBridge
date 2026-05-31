@@ -246,6 +246,29 @@ textarea:focus {
   color: var(--green);
 }
 
+.page-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.page-error .btn {
+  min-height: 32px;
+  padding: 5px 10px;
+}
+
+.inline-error {
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(180, 35, 24, 0.1);
+  color: var(--red);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+}
+
 .shell {
   min-height: 100vh;
   display: grid;

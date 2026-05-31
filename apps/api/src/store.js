@@ -383,6 +383,7 @@ export function toDebtorListItem(application) {
     bankName: application.bankName,
     totalDebtAmountCents: application.totalDebtAmountCents,
     overdueRange: application.overdueRange,
+    expectedSolutions: application.expectedSolutions,
     status: application.status,
     createdAt: application.createdAt
   };
