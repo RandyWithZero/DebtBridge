@@ -10,11 +10,11 @@
   --muted: #52606d;
   --brand: #2563eb;
   --brand-2: #0f5b5f;
-  --brand-dark: #0a474a;
+  --brand-dark: #08373b;
   --amber: #b7791f;
   --red: #c53030;
   --green: #2f855a;
-  --shadow: 0 18px 46px rgba(20, 32, 46, 0.1);
+  --shadow: 0 18px 22px rgba(31, 41, 51, 0.08);
 }
 
 * {
@@ -27,7 +27,9 @@ body {
   background: var(--steel);
   color: var(--text);
   font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
-  line-height: 1.55;
+  font-size: 16px;
+  line-height: 26px;
+  letter-spacing: 0;
 }
 
 button,
@@ -54,7 +56,7 @@ button {
   min-height: 100vh;
   display: grid;
   grid-template-columns: minmax(320px, 480px) minmax(320px, 1fr);
-  background: linear-gradient(120deg, var(--navy-2) 0 48%, var(--steel) 48% 100%);
+  background: var(--steel);
 }
 
 .login-brand {
@@ -62,6 +64,7 @@ button {
   align-content: end;
   gap: 18px;
   padding: clamp(28px, 6vw, 80px);
+  background: var(--navy-2);
   color: #fff;
 }
 
@@ -80,9 +83,9 @@ button {
   margin: 0 0 8px;
   color: var(--amber);
   font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  line-height: 18px;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
 h1,
@@ -105,7 +108,9 @@ h2 {
 }
 
 h3 {
-  font-size: 15px;
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 600;
 }
 
 .login-copy {
@@ -146,20 +151,23 @@ label {
   display: grid;
   gap: 7px;
   color: var(--text);
-  font-size: 14px;
-  font-weight: 800;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
 }
 
 input,
 select,
 textarea {
   width: 100%;
-  min-height: 42px;
+  min-height: 44px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 9px 12px;
+  padding: 10px 12px;
   background: #fff;
   color: var(--text);
+  font-size: 14px;
+  line-height: 22px;
 }
 
 textarea {
@@ -175,27 +183,28 @@ textarea:focus {
 }
 
 .btn {
-  min-height: 38px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   border: 1px solid transparent;
   border-radius: 8px;
-  padding: 8px 13px;
+  padding: 9px 14px;
   background: #fff;
-  color: var(--brand-2);
+  color: var(--brand);
   font-size: 14px;
-  font-weight: 900;
+  line-height: 20px;
+  font-weight: 500;
 }
 
 .btn.primary {
-  background: var(--brand-2);
+  background: var(--brand);
   color: #fff;
 }
 
 .btn.primary:hover {
-  background: var(--brand-dark);
+  background: #1d4ed8;
 }
 
 .btn.ghost {
@@ -220,7 +229,7 @@ textarea:focus {
   display: none;
   border-radius: 8px;
   padding: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .notice.show {
@@ -259,7 +268,7 @@ textarea:focus {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .nav {
@@ -276,7 +285,7 @@ textarea:focus {
   color: rgba(255, 255, 255, 0.76);
   padding: 9px 12px;
   text-align: left;
-  font-weight: 900;
+  font-weight: 500;
 }
 
 .nav button.active,
@@ -343,9 +352,9 @@ textarea:focus {
 .metric strong {
   display: block;
   margin-top: 8px;
-  color: var(--brand-2);
+  color: var(--brand);
   font-size: 30px;
-  line-height: 1;
+  line-height: 40px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -409,23 +418,25 @@ table {
   width: 100%;
   min-width: 920px;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 20px;
 }
 
 th,
 td {
-  padding: 12px 14px;
+  min-height: 48px;
+  padding: 12px;
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: middle;
 }
 
 th {
-  color: var(--muted);
-  font-size: 12px;
+  color: var(--text);
+  font-size: 13px;
   white-space: nowrap;
   background: var(--panel-2);
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .badge {
@@ -438,7 +449,8 @@ th {
   background: #fff;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 900;
+  line-height: 18px;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -464,6 +476,54 @@ th {
   display: grid;
   grid-template-columns: minmax(280px, 0.9fr) minmax(340px, 1.2fr) minmax(280px, 0.9fr);
   gap: 14px;
+}
+
+.status-stepper {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.status-stepper span {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+}
+
+.status-stepper span.done {
+  border-color: rgba(37, 99, 235, 0.28);
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--brand);
+}
+
+.timeline {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline li {
+  display: grid;
+  grid-template-columns: 108px 1fr;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .facts {

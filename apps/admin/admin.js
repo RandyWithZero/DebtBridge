@@ -100,7 +100,7 @@ async function render() {
   app.innerHTML = `
     <section class="shell">
       <aside class="sidebar">
-        <div class="brand"><span class="mark">DB</span><span>后台管理</span></div>
+        <div class="brand"><span class="mark">DB</span><span>DebtBridge 运营控制台</span></div>
         <nav class="nav" aria-label="后台管理导航">
           ${navItems.map(([key, href, label]) => `<button class="${page === key ? "active" : ""}" data-link href="${href}">${label}</button>`).join("")}
         </nav>
@@ -219,15 +219,19 @@ function renderUsers() {
 function renderDebtors() {
   return dataTable({
     title: "债务人申请审核",
-    headers: ["申请编号", "姓名 / 城市", "银行", "金额", "逾期", "状态", "提交时间", "操作"],
+    headers: ["Lead ID", "姓名 / 城市", "欠款银行", "欠款金额", "逾期时长", "月还款能力", "催收状态", "律师函/传票", "审核状态", "匹配状态", "最新跟进时间", "操作"],
     rows: state.leads.map((lead) => [
       shortId(lead.id),
       `${lead.nameMasked} / ${lead.city}<br><span class="badge">${lead.phoneMasked}</span>`,
       lead.bankName,
       money(lead.totalDebtAmountCents),
       labels.overdue[lead.overdueRange] || lead.overdueRange,
+      money(lead.monthlyRepaymentCapacityCents),
+      lead.isUnderCollection ? "高频催收" : "未标记",
+      lead.hasLegalNotice ? "已收到" : "未收到",
       badge(lead.status),
-      date(lead.createdAt),
+      lead.status === "matched" ? "已匹配" : lead.status === "qualified" ? "可进入匹配" : "待审核完成",
+      date(lead.updatedAt || lead.createdAt),
       actionButtons("lead", lead.id, [["under_review", "开始初审"], ["qualified", "通过"], ["need_more_info", "补充"], ["rejected", "拒绝"]])
     ])
   });
@@ -236,14 +240,17 @@ function renderDebtors() {
 function renderPartners() {
   return dataTable({
     title: "机构管理与资质审核",
-    headers: ["机构编号", "公司名称", "城市", "可承接银行", "状态", "当前案件", "操作"],
+    headers: ["Organization ID", "公司名称", "业务城市", "可承接银行", "可做方案", "资质状态", "当前案件数", "成功 / 失败统计", "最新审核时间", "操作"],
     rows: state.partners.map((partner) => [
       shortId(partner.id),
       partner.organizationName,
       partner.serviceCities.join("、"),
       partner.acceptedBanks.join("、"),
+      partner.capabilities.map((item) => labels.solution[item] || item).join("、"),
       badge(partner.status),
       state.cases.filter((item) => item.partnerOrganizationId === partner.id).length,
+      `${countCasesForPartner(partner.id, ["success"])} / ${countCasesForPartner(partner.id, ["failed", "cancelled"])}`,
+      date(partner.reviewedAt || partner.updatedAt),
       actionButtons("partner", partner.id, [["under_review", "开始审核"], ["active", "通过"], ["need_more_info", "补充"], ["rejected", "拒绝"], ["suspended", "暂停"]])
     ])
   });
@@ -276,29 +283,36 @@ function renderMatching() {
 }
 
 function renderProgress() {
-  return dataTable({
-    title: "案件进度跟踪",
-    headers: ["案件编号", "债务人", "合作机构", "状态", "推荐理由", "更新时间", "状态操作"],
-    rows: state.cases.map((item) => {
-      const lead = state.leads.find((leadItem) => leadItem.id === item.debtorApplicationId);
-      const partner = state.partners.find((partnerItem) => partnerItem.id === item.partnerOrganizationId);
-      return [
-        shortId(item.id),
-        lead ? `${lead.nameMasked} / ${lead.city}` : shortId(item.debtorApplicationId),
-        partner?.organizationName || shortId(item.partnerOrganizationId),
-        badge(item.status),
-        escapeHtml(item.matchReason),
-        date(item.updatedAt),
-        nextStatuses(item.status).map((next) => `<button class="btn" data-case-id="${item.id}" data-next-status="${next}" type="button">${labels.status[next] || next}</button>`).join("")
-      ];
-    })
-  });
+  if (!state.cases.length) return `<article class="card">${emptyState("案件进度跟踪")}</article>`;
+  return `<section class="grid">${state.cases.map((item) => {
+    const lead = state.leads.find((leadItem) => leadItem.id === item.debtorApplicationId);
+    const partner = state.partners.find((partnerItem) => partnerItem.id === item.partnerOrganizationId);
+    return `
+      <article class="card">
+        <div class="table-head">
+          <div>
+            <h2>${shortId(item.id)} · ${lead ? `${lead.nameMasked} / ${lead.city}` : shortId(item.debtorApplicationId)}</h2>
+            <p>${partner?.organizationName || shortId(item.partnerOrganizationId)} · ${escapeHtml(item.matchReason || "人工匹配案件")}</p>
+          </div>
+          ${badge(item.status)}
+        </div>
+        ${statusStepper(item.status)}
+        <ul class="timeline">
+          <li><strong>创建</strong><span>${date(item.createdAt)} 创建人工匹配并记录推荐理由。</span></li>
+          <li><strong>更新</strong><span>${date(item.updatedAt)} 当前状态：${labels.status[item.status] || item.status}。</span></li>
+          <li><strong>下一步</strong><span>${nextStatuses(item.status).length ? nextStatuses(item.status).map((next) => labels.status[next] || next).join("、") : "暂无可执行状态流转"}</span></li>
+        </ul>
+        <div class="row-actions">
+          ${nextStatuses(item.status).map((next) => `<button class="btn" data-case-id="${item.id}" data-next-status="${next}" type="button">${labels.status[next] || next}</button>`).join("")}
+        </div>
+      </article>`;
+  }).join("")}</section>`;
 }
 
 function renderAgreements() {
   return dataTable({
     title: "协议记录与核验",
-    headers: ["案件编号", "债务人", "合作机构", "协议状态", "文件引用", "更新时间", "操作"],
+    headers: ["Case ID", "债务人", "合作机构", "协议类型", "协议日期", "协议文件引用", "费用模式引用", "核验状态", "备注", "操作"],
     rows: state.cases.map((item) => {
       const lead = state.leads.find((leadItem) => leadItem.id === item.debtorApplicationId);
       const partner = state.partners.find((partnerItem) => partnerItem.id === item.partnerOrganizationId);
@@ -307,9 +321,12 @@ function renderAgreements() {
         shortId(item.id),
         lead ? `${lead.nameMasked} / ${lead.city}` : shortId(item.debtorApplicationId),
         partner?.organizationName || shortId(item.partnerOrganizationId),
-        badge(item.status),
+        needsAgreement ? "个性化分期 / 调解协议" : "暂未进入协议阶段",
+        needsAgreement ? date(item.updatedAt).slice(0, 10) : "-",
         needsAgreement ? `agreement-${shortId(item.id)}.pdf` : "暂未进入协议阶段",
-        date(item.updatedAt),
+        "平台不代收款，费用由双方官方渠道结算",
+        badge(item.status === "agreement_signed" || item.status === "success" ? "success" : item.status),
+        item.status === "agreement_pending" ? "待上传或替换协议引用" : "受控文件引用，仅记录摘要",
         item.status === "agreement_pending" ? `<button class="btn" data-case-id="${item.id}" data-next-status="agreement_signed" type="button">绑定协议引用</button>` : "受控引用"
       ];
     })
@@ -516,7 +533,7 @@ function queueTable() {
 }
 
 function partnerTable(partners) {
-  return `<div class="table-wrap"><table><thead><tr><th>机构</th><th>城市</th><th>能力</th><th>操作</th></tr></thead><tbody>${partners.map((partner) => `<tr><td>${partner.organizationName}</td><td>${partner.serviceCities.join("、")}</td><td>${partner.capabilities.map((item) => labels.solution[item] || item).join("、")}</td><td><button class="btn" data-select-partner="${partner.id}" type="button">选择</button></td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>机构名称</th><th>业务城市</th><th>可承接银行</th><th>可做方案</th><th>当前案件数</th><th>历史完成率</th><th>资质状态</th><th>操作</th></tr></thead><tbody>${partners.map((partner) => `<tr><td>${partner.organizationName}</td><td>${partner.serviceCities.join("、")}</td><td>${partner.acceptedBanks.join("、")}</td><td>${partner.capabilities.map((item) => labels.solution[item] || item).join("、")}</td><td>${countCasesForPartner(partner.id, ["matched", "contacted", "negotiating", "agreement_pending", "agreement_signed", "in_repayment"])}</td><td>${completionRate(partner.id)}</td><td>${badge(partner.status)}</td><td><button class="btn" data-select-partner="${partner.id}" type="button">选择</button></td></tr>`).join("")}</tbody></table></div>`;
 }
 
 function metric(label, value) {
@@ -554,6 +571,23 @@ function nextStatuses(status) {
   }[status] || [];
 }
 
+function statusStepper(status) {
+  const steps = [
+    ["submitted", "提交"],
+    ["under_review", "审核中"],
+    ["qualified", "已通过"],
+    ["matched", "已匹配"],
+    ["contacted", "已联系"],
+    ["negotiating", "沟通中"],
+    ["agreement_pending", "待协议"],
+    ["agreement_signed", "已达成"],
+    ["in_repayment", "还款中"],
+    ["success", "已完成"]
+  ];
+  const index = Math.max(steps.findIndex(([key]) => key === status), status === "archived" ? steps.length - 1 : 0);
+  return `<div class="status-stepper" aria-label="案件状态进度">${steps.map(([key, label], stepIndex) => `<span class="${stepIndex <= index ? "done" : ""}">${label}</span>`).join("")}</div>`;
+}
+
 function reasonFor(decision) {
   return {
     under_review: "开始人工审核",
@@ -567,6 +601,17 @@ function reasonFor(decision) {
 
 function count(items, statuses) {
   return items.filter((item) => statuses.includes(item.status)).length;
+}
+
+function countCasesForPartner(partnerId, statuses) {
+  return state.cases.filter((item) => item.partnerOrganizationId === partnerId && statuses.includes(item.status)).length;
+}
+
+function completionRate(partnerId) {
+  const done = countCasesForPartner(partnerId, ["success"]);
+  const failed = countCasesForPartner(partnerId, ["failed", "cancelled"]);
+  const total = done + failed;
+  return total ? `${Math.round((done / total) * 100)}%` : "暂无历史";
 }
 
 function createdSince(days) {
