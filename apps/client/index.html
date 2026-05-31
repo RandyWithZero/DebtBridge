@@ -32,7 +32,7 @@
 
     <script>
       const explicitApiBase = new URLSearchParams(location.search).get("api");
-      const defaultApiBase = `${location.protocol}//${location.hostname}:3000`;
+      const defaultApiBase = "";
       window.DEBTBRIDGE_API_BASE = explicitApiBase || defaultApiBase;
       localStorage.setItem("debtbridgeApiBase", window.DEBTBRIDGE_API_BASE);
     </script>
