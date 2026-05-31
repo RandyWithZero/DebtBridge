@@ -6,6 +6,8 @@ DebtBridge MVP 是一个信用卡逾期协商信息撮合平台。平台只做�
 
 当前仓库只有占位 README，因此本文定义第一版可落地架构，供后端、前端、数据库和 DevOps 子任务并行实现。
 
+GOO-12 提出双前端入口、登录认证、PostgreSQL、机构/债务人自助端和平台后台的下一阶段重构要求。该阶段的实施顺序、路由分层、权限边界、数据库迁移与 PR/MR 流程以 `docs/architecture/multi-entry-refactor-blueprint.md` 为准；本文继续作为 MVP 领域边界、状态机和合规原则的基础参考。
+
 MVP 目标：
 
 - 欠款人提交信用卡逾期协商申请。
