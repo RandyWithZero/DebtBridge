@@ -2,6 +2,16 @@
 
 DebtBridge MVP is a credit-card overdue negotiation matching platform. The current backend implementation is a dependency-light Node.js API that covers public intake, partner onboarding, admin review, manual matching, progress tracking, document metadata binding, and audit logs.
 
+## Frontend boundaries
+
+The browser client is a standalone static frontend under `apps/client`. It is for debtors and partner organizations only:
+
+- Debtors log in through `/debtor/login`, then see only their own applications, supplement action, personal account summary, and related match cases.
+- Partner organizations log in through `/partner/login`, then see only their own organization profile/status and authorized cooperation cases.
+- The client talks to the API at `window.DEBTBRIDGE_API_BASE`, defaulting to `http://localhost:3000`.
+
+The backend service is API-only and no longer serves browser pages. Admin UI work should live in a separate admin frontend, not in `apps/client` and not inside the API server.
+
 ## Backend API
 
 Run tests:
@@ -55,6 +65,14 @@ For admin API-only local verification, the same server can be started with the e
 ```bash
 npm run dev:admin
 ```
+
+Run the client frontend in another terminal:
+
+```bash
+npm run dev:client
+```
+
+Open `http://localhost:5173` for the client site, debtor login, debtor application, partner login, and partner onboarding. The API remains available at `http://localhost:3000/api/*`.
 
 Run the app and PostgreSQL together with Docker Compose:
 
