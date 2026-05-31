@@ -10,11 +10,13 @@ Run tests:
 npm test
 ```
 
-Run the local API:
+Run the local MVP app and API:
 
 ```bash
-npm run start:api
+npm start
 ```
+
+Open `http://localhost:3000` for the public site, debtor application, partner onboarding, and operations back office.
 
 Default admin users for local MVP verification:
 

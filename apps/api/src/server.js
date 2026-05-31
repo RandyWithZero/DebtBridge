@@ -1,9 +1,16 @@
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
 import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { ADMIN_USERS, PUBLIC_CONFIG, stripInternalDocumentFields } from "./domain.js";
 import { ApiError, forbidden, notFound, validationError } from "./errors.js";
 import { createDebtBridgeService } from "./service.js";
 import { createStore } from "./store.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const WEB_ROOT = path.resolve(__dirname, "../../web");
 
 export function createApp() {
   const repository = createStore();
@@ -12,6 +19,10 @@ export function createApp() {
   async function handler(request, response) {
     try {
       const url = new URL(request.url, "http://localhost");
+      if (!url.pathname.startsWith("/api/")) {
+        const served = await serveStatic(request, response, url);
+        if (served) return;
+      }
       const route = matchRoute(request.method, url.pathname);
       if (!route) throw notFound("接口不存在");
 
@@ -34,6 +45,39 @@ export function createApp() {
   }
 
   return { handler, repository, service };
+}
+
+async function serveStatic(request, response, url) {
+  if (request.method !== "GET" && request.method !== "HEAD") return false;
+  const pathname = decodeURIComponent(url.pathname);
+  const relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
+  const requestedPath = path.resolve(WEB_ROOT, relativePath);
+  const filePath = requestedPath.startsWith(WEB_ROOT) ? requestedPath : path.join(WEB_ROOT, "index.html");
+  try {
+    const fileStat = await stat(filePath);
+    if (!fileStat.isFile()) return streamFile(path.join(WEB_ROOT, "index.html"), response);
+    return streamFile(filePath, response);
+  } catch {
+    return streamFile(path.join(WEB_ROOT, "index.html"), response);
+  }
+}
+
+function streamFile(filePath, response) {
+  response.writeHead(200, { "content-type": contentType(filePath) });
+  createReadStream(filePath).pipe(response);
+  return true;
+}
+
+function contentType(filePath) {
+  const extension = path.extname(filePath);
+  return (
+    {
+      ".html": "text/html; charset=utf-8",
+      ".css": "text/css; charset=utf-8",
+      ".js": "text/javascript; charset=utf-8",
+      ".svg": "image/svg+xml"
+    }[extension] ?? "application/octet-stream"
+  );
 }
 
 export function createHttpServer() {
